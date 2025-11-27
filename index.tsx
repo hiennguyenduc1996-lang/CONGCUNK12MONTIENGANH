@@ -750,7 +750,7 @@ VÍ DỤ OUTPUT:
           
           {/* Header */}
           <div className="mb-8 flex-shrink-0">
-             <h1 className="text-xl font-bold tracking-tight text-white/90 uppercase leading-snug">
+             <h1 className="text-base font-bold tracking-tight text-white/90 uppercase leading-snug">
                CÔNG CỤ HỖ TRỢ NK12 - TIẾNG ANH
              </h1>
           </div>
