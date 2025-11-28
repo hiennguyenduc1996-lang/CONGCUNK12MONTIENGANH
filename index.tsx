@@ -810,7 +810,7 @@ VÍ DỤ OUTPUT:
      try {
        const ai = new GoogleGenAI({ apiKey: getApiKey() });
        // Use gemini-2.5-flash which is good for search and fast text generation
-       const modelId = "gemini-3-pro-preview"; // Use Pro for better search & reasoning
+       const modelId = "gemini-2.5-flash"; 
 
        let toolConfig = {};
        let promptInput = "";
@@ -1488,7 +1488,12 @@ Hãy làm thật chi tiết và đẹp mắt.
                         )}
                         </button>
                     </div>
-                    <p className="text-[10px] text-blue-400 italic mt-1">Key được lưu trong trình duyệt của bạn.</p>
+                    <p className="text-[10px] text-blue-400 italic mt-1 flex justify-between">
+                        <span>Key được lưu trong trình duyệt của bạn.</span>
+                        <span className={userApiKey.trim() ? "text-green-400 font-bold" : "text-amber-400 font-bold"}>
+                            {userApiKey.trim() ? "● Đang dùng Key cá nhân" : "● Đang dùng Key mặc định"}
+                        </span>
+                    </p>
                   </div>
               </div>
           )}
