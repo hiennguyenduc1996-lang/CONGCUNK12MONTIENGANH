@@ -31,6 +31,48 @@
       .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: #94a3b8; 
       }
+
+      /* PRINT STYLES FOR PDF EXPORT */
+      @media print {
+        @page {
+          margin: 20mm;
+          size: A4;
+        }
+        body {
+          background-color: white;
+          overflow: visible !important;
+        }
+        /* Hide Sidebar, Buttons, Scrollbars */
+        .no-print, 
+        .sidebar-container, 
+        .toolbar-container,
+        ::-webkit-scrollbar {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+        /* Expand Content to Full Width */
+        .main-content-container {
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: visible !important;
+          height: auto !important;
+          display: block !important;
+        }
+        .generated-content-wrapper {
+          box-shadow: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+        /* Force background colors to print */
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+      }
     </style>
   <script type="importmap">
 {

@@ -131,8 +131,8 @@ const GRAMMAR_TOPICS = [
 
 const App = () => {
   // --- TABS STATE ---
-  const [activeTab, setActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'settings'>('upload');
-  const [lastActiveTab, setLastActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'newsletter' | 'settings'>('upload');
+  const [lastActiveTab, setLastActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'newsletter'>('upload');
 
   // --- API KEY STATE ---
   const [userApiKey, setUserApiKey] = useState<string>("");
@@ -166,6 +166,10 @@ const App = () => {
   const [selectedGrammarTopic, setSelectedGrammarTopic] = useState<string>(GRAMMAR_TOPICS[0]);
   const [grammarLevel, setGrammarLevel] = useState<string>(DIFFICULTY_LEVELS[1].id);
   const [grammarQuestionCount, setGrammarQuestionCount] = useState<number>(10);
+
+  // --- TAB 5 STATE: NEWSLETTER (BẢN TIN) ---
+  const [newsletterMode, setNewsletterMode] = useState<'topic' | 'url' | 'text'>('topic');
+  const [newsletterInput, setNewsletterInput] = useState<string>("");
 
   // --- SHARED STATE ---
   const [createdContentHtml, setCreatedContentHtml] = useState<string>("");
@@ -232,27 +236,31 @@ const App = () => {
       "p { margin-bottom: 6pt; } " +
       ".ans-opt { margin-bottom: 4pt; display: block; } " +
       "mark { background-color: yellow; } " + 
-      "table { border-collapse: collapse; width: 100%; margin-top: 20px; border: 2px solid #000; } " +
-      "td, th { border: 1px solid #000; padding: 8px; text-align: center; font-weight: bold; font-size: 12pt; background-color: #f0f0f0; } " +
+      "table { border-collapse: collapse; width: 100%; margin-top: 20px; border: 2px solid #000; table-layout: fixed; } " +
+      "td, th { border: 1px solid #000; padding: 8px; text-align: left; vertical-align: top; font-size: 12pt; word-wrap: break-word; } " +
       ".announcement-box { border: 2px solid #000; padding: 15px; margin: 15px 0; background-color: #f9f9f9; width: 100%; } " +
+      ".bilingual-text { display: flex; gap: 20px; margin-bottom: 20px; } " +
+      ".bilingual-col { flex: 1; } " +
+      ".vocab-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.9em; font-weight: bold; margin-left: 5px; border: 1px solid #ccc; }" +
+      ".badge-b1 { background-color: #dbeafe !important; color: #1e40af !important; border: 1px solid #93c5fd; }" + /* Blue 100/800 */
+      ".badge-b2 { background-color: #fef9c3 !important; color: #854d0e !important; border: 1px solid #fde047; }" + /* Yellow 100/800 */
+      ".badge-c1 { background-color: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fca5a5; }" + /* Red 100/800 */
+      "h3 { color: #1e40af; border-bottom: 2px solid #ccc; padding-bottom: 5px; background: none; }" +
       "</style>" +
       "</head><body>" + content + "</body></html>";
   };
 
   const splitContentIntoBatches = (htmlContent: string): string[] => {
-    // Advanced Regex to find question headers like <b>Question 1.</b>
-    // We want to group roughly 5-6 questions per batch to allow AI enough output tokens for detailed answers
     const regex = /<b>Question\s+\d+\./g;
     const matches = [...htmlContent.matchAll(regex)];
     
-    if (matches.length === 0) return [htmlContent]; // Fallback if format is different
+    if (matches.length === 0) return [htmlContent]; 
 
     const batches: string[] = [];
-    const BATCH_SIZE = 5; // Questions per batch
+    const BATCH_SIZE = 5; 
 
     for (let i = 0; i < matches.length; i += BATCH_SIZE) {
       const startIndex = matches[i].index;
-      // End index is the start of the next batch, or end of string
       const endIndex = (i + BATCH_SIZE < matches.length) 
         ? matches[i + BATCH_SIZE].index 
         : htmlContent.length;
@@ -265,7 +273,6 @@ const App = () => {
   // --- SHARED GENERATOR HANDLER FOR SOLUTIONS ---
 
   const handleGenerateSolution = async () => {
-    // 1. Get current content (from ref if edited, else state)
     let currentContent = "";
     if (contentEditableRef.current) {
         currentContent = contentEditableRef.current.innerHTML;
@@ -280,10 +287,8 @@ const App = () => {
 
     setIsLoading(true);
     setError(null);
-    setCreatedContentHtml(""); // Clear screen to stream solutions
+    setCreatedContentHtml(""); 
     
-    // 2. Split content intelligently to avoid overload
-    // We pass the full content if it's small, or chunks if it's large
     const batches = splitContentIntoBatches(currentContent);
     const totalBatches = batches.length;
 
@@ -319,7 +324,7 @@ NHIỆM VỤ:
             const response = await ai.models.generateContent({
                 model: modelId,
                 contents: { parts: [{ text: prompt }] },
-                config: { temperature: 0.5 } // Lower temp for factual explanations
+                config: { temperature: 0.5 } 
             });
 
             const html = (response.text || "").replace(/```html|```/g, "").trim();
@@ -328,7 +333,6 @@ NHIỆM VỤ:
 
     } catch (err: any) {
         setError("Lỗi khi tạo hướng dẫn giải: " + err.message);
-        // Restore content if failed
         setCreatedContentHtml(currentContent); 
     } finally {
         setIsLoading(false);
@@ -479,12 +483,10 @@ QUY TẮC QUAN TRỌNG:
     finally { setIsLoading(false); setLoadingStatus(""); }
   };
 
-  // --- NEW HANDLER FOR SOLUTION GUIDE FROM UPLOAD ---
   const handleGenerateSolutionFromUpload = async () => {
     if (!file) return setError("Vui lòng chọn file để tạo hướng dẫn giải.");
     
     setIsLoading(true); setError(null); 
-    // Keep existing variants if any, we will append or select the new solution variant
     
     try {
       const ai = new GoogleGenAI({ apiKey: getApiKey() });
@@ -792,6 +794,108 @@ VÍ DỤ OUTPUT:
     }
   };
 
+  // --- TAB 5 HANDLERS: NEWSLETTER ---
+
+  const handleCreateNewsletter = async () => {
+     if (!newsletterInput.trim()) {
+        setError("Vui lòng nhập chủ đề, link bài báo hoặc văn bản thô.");
+        return;
+     }
+     
+     setIsLoading(true);
+     setCreatedContentHtml("");
+     setError(null);
+     setLoadingStatus("Đang thiết kế bản tin (Có thể mất 30s-1 phút)...");
+
+     try {
+       const ai = new GoogleGenAI({ apiKey: getApiKey() });
+       // Use gemini-2.5-flash which is good for search and fast text generation
+       const modelId = "gemini-3-pro-preview"; // Use Pro for better search & reasoning
+
+       let toolConfig = {};
+       let promptInput = "";
+       
+       if (newsletterMode === 'url') {
+          // Enable Google Search for URL mode
+          toolConfig = { tools: [{ googleSearch: {} }] };
+          promptInput = `
+Hãy đọc nội dung từ đường link sau và tạo bản tin: ${newsletterInput}.
+`;
+       } else if (newsletterMode === 'topic') {
+          promptInput = `
+Hãy viết một bản tin/câu chuyện tiếng Anh hay về chủ đề: "${newsletterInput}".
+`;
+       } else {
+          promptInput = `
+Dựa vào văn bản thô sau đây để tạo bản tin:
+"${newsletterInput.substring(0, 10000)}..."
+`;
+       }
+
+       const mainPrompt = `
+${promptInput}
+
+**VAI TRÒ:** Bạn là biên tập viên báo song ngữ chuyên nghiệp.
+**NHIỆM VỤ:** Tạo một file tài liệu học tập (Newsletter) dài khoảng 3-4 trang.
+
+**QUY TẮC ĐỊNH DẠNG (STYLE GUIDE):**
+1. **TIÊU ĐỀ PHẦN (HEADERS):** 
+   - Chỉ sử dụng chữ màu xanh đậm (#1e40af). 
+   - **TUYỆT ĐỐI KHÔNG** dùng màu nền (background-color) cho tiêu đề. 
+   - Không bôi đen (background) xung quanh tiêu đề.
+
+2. **IN ĐẬM TỪ VỰNG:**
+   - Trong **PHẦN 1 (Bài báo)**: Hãy **in đậm (<b>)** 50 từ vựng/cụm từ trọng tâm trong văn bản Tiếng Anh **VÀ** in đậm nghĩa Tiếng Việt tương ứng ở cột bên cạnh để học sinh dễ đối chiếu.
+   - Trong **PHẦN 2 (Bảng từ vựng)**: Cột từ vựng để chữ thường, **KHÔNG** in đậm.
+
+**CẤU TRÚC TÀI LIỆU (HTML OUTPUT):**
+
+**PHẦN 1: BÀI BÁO SONG NGỮ (BILINGUAL ARTICLE)**
+- Viết một bài báo hoặc câu chuyện hấp dẫn về chủ đề trên.
+- Trình bày dạng **BẢNG 2 CỘT (HTML TABLE)** không viền hoặc viền mờ.
+  + Cột Trái: Tiếng Anh (Có in đậm từ vựng trọng tâm).
+  + Cột Phải: Tiếng Việt (Dịch song song, in đậm nghĩa từ trọng tâm tương ứng).
+
+**PHẦN 2: TỪ VỰNG TRỌNG TÂM (VOCABULARY FOCUS)**
+- Trích xuất 50 từ vựng đã in đậm ở trên.
+- Trình bày dạng BẢNG (HTML Table) gồm 5 cột: No., Word/Phrase, IPA, Meaning, Level.
+- **Word/Phrase**: Không in đậm.
+- **Level**: Dùng badge màu (B1/B2/C1).
+
+**YÊU CẦU ĐỊNH DẠNG HTML (QUAN TRỌNG - MÀU SẮC WORD-SAFE):**
+- Tiêu đề chính: <h1 style="color:#1e40af; text-align:center;">[TIÊU ĐỀ TIẾNG ANH]</h1>
+- Tiêu đề phụ: <h2 style="color:#475569; text-align:center; font-style:italic;">[TIÊU ĐỀ TIẾNG VIỆT]</h2>
+- Badge Level: Sử dụng span với class và style (màu nền nhạt, chữ đậm để in rõ trong Word):
+  + <span class="vocab-badge badge-b1" style="background-color:#dbeafe; color:#1e40af; border:1px solid #93c5fd;">B1</span>
+  + <span class="vocab-badge badge-b2" style="background-color:#fef9c3; color:#854d0e; border:1px solid #fde047;">B2</span>
+  + <span class="vocab-badge badge-c1" style="background-color:#fee2e2; color:#991b1b; border:1px solid #fca5a5;">C1</span>
+- Bảng từ vựng phải có border, cellpadding đẹp.
+
+Hãy làm thật chi tiết và đẹp mắt.
+`;
+
+       const response = await ai.models.generateContent({
+         model: modelId,
+         contents: { parts: [{ text: mainPrompt }] },
+         config: { 
+            ...toolConfig,
+            temperature: 0.7 
+         }
+       });
+
+       const html = (response.text || "").replace(/```html|```/g, "").trim();
+       
+       // Clean up grounding metadata if present in text (usually redundant in output)
+       setCreatedContentHtml(html);
+
+     } catch (err: any) {
+       setError("Lỗi tạo bản tin: " + err.message);
+     } finally {
+       setIsLoading(false);
+       setLoadingStatus("");
+     }
+  };
+
   const downloadCreatedContent = () => {
     let contentToSave = createdContentHtml;
     if (contentEditableRef.current) {
@@ -803,6 +907,7 @@ VÍ DỤ OUTPUT:
     let prefix = 'Bien_Soan_AI';
     if (activeTab === 'vocab') prefix = 'Tu_Vung';
     if (activeTab === 'grammar') prefix = 'Ngu_Phap';
+    if (activeTab === 'newsletter') prefix = 'Ban_Tin_Song_Ngu';
     
     const sourceHTML = createWordHtml(contentToSave, "Tai_Lieu_Bien_Soan_AI");
     const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
@@ -820,7 +925,7 @@ VÍ DỤ OUTPUT:
     <div className="flex flex-col md:flex-row h-screen bg-slate-50 overflow-hidden">
       
       {/* LEFT PANEL: Sidebar / Controls */}
-      <div className="w-full md:w-[400px] flex-shrink-0 bg-blue-900 text-white flex flex-col h-full shadow-2xl z-20 relative">
+      <div id="sidebar" className="sidebar-container w-full md:w-[400px] flex-shrink-0 bg-blue-900 text-white flex flex-col h-full shadow-2xl z-20 relative no-print">
         <div className="p-6 flex-grow overflow-y-auto custom-scrollbar flex flex-col">
           
           {/* Header */}
@@ -842,11 +947,12 @@ VÍ DỤ OUTPUT:
                 Quay lại
               </button>
           ) : (
-              <div className="grid grid-cols-2 gap-2 p-1.5 bg-blue-950/50 rounded-xl mb-6 border border-blue-800/50 flex-shrink-0">
-                <button onClick={() => setActiveTab('upload')} className={`py-2.5 text-sm font-semibold rounded-lg transition-all ${activeTab === 'upload' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Tạo Đề</button>
-                <button onClick={() => setActiveTab('create')} className={`py-2.5 text-sm font-semibold rounded-lg transition-all ${activeTab === 'create' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Soạn Bài</button>
-                <button onClick={() => setActiveTab('vocab')} className={`py-2.5 text-sm font-semibold rounded-lg transition-all ${activeTab === 'vocab' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Từ Vựng</button>
-                <button onClick={() => setActiveTab('grammar')} className={`py-2.5 text-sm font-semibold rounded-lg transition-all ${activeTab === 'grammar' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Ngữ Pháp</button>
+              <div className="grid grid-cols-3 gap-2 p-1.5 bg-blue-950/50 rounded-xl mb-6 border border-blue-800/50 flex-shrink-0">
+                <button onClick={() => setActiveTab('upload')} className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'upload' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Tạo Đề</button>
+                <button onClick={() => setActiveTab('create')} className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'create' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Soạn Bài</button>
+                <button onClick={() => setActiveTab('vocab')} className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'vocab' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Từ Vựng</button>
+                <button onClick={() => setActiveTab('grammar')} className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'grammar' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Ngữ Pháp</button>
+                <button onClick={() => setActiveTab('newsletter')} className={`col-span-2 py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'newsletter' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Bản Tin</button>
               </div>
           )}
 
@@ -1257,7 +1363,90 @@ VÍ DỤ OUTPUT:
              </div>
           )}
 
-          {/* === CONTENT FOR TAB 5: SETTINGS (NEW) === */}
+          {/* === CONTENT FOR TAB 5: NEWSLETTER (NEW) === */}
+          {activeTab === 'newsletter' && (
+             <div className="space-y-6 animate-fade-in-up">
+                
+                <div>
+                   <label className="text-sm text-blue-200 block mb-2 font-medium">Chọn nguồn đầu vào:</label>
+                   <div className="flex flex-col gap-2">
+                      <label className="flex items-center gap-3 cursor-pointer bg-blue-950/50 p-2.5 rounded-lg border border-blue-800 hover:bg-blue-900 transition">
+                         <input type="radio" checked={newsletterMode === 'topic'} onChange={() => setNewsletterMode('topic')} className="text-blue-600 focus:ring-blue-500" />
+                         <div>
+                            <span className="text-white text-sm font-bold block">Chủ đề (Topic)</span>
+                            <span className="text-blue-300 text-xs">AI tự viết nội dung mới</span>
+                         </div>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer bg-blue-950/50 p-2.5 rounded-lg border border-blue-800 hover:bg-blue-900 transition">
+                         <input type="radio" checked={newsletterMode === 'url'} onChange={() => setNewsletterMode('url')} className="text-blue-600 focus:ring-blue-500" />
+                         <div>
+                            <span className="text-white text-sm font-bold block">Link bài báo (URL)</span>
+                            <span className="text-blue-300 text-xs">AI đọc và tóm tắt lại</span>
+                         </div>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer bg-blue-950/50 p-2.5 rounded-lg border border-blue-800 hover:bg-blue-900 transition">
+                         <input type="radio" checked={newsletterMode === 'text'} onChange={() => setNewsletterMode('text')} className="text-blue-600 focus:ring-blue-500" />
+                         <div>
+                            <span className="text-white text-sm font-bold block">Văn bản thô (Raw Text)</span>
+                            <span className="text-blue-300 text-xs">Dán nội dung có sẵn</span>
+                         </div>
+                      </label>
+                   </div>
+                </div>
+
+                <div>
+                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">
+                      {newsletterMode === 'topic' ? 'Nhập chủ đề:' : (newsletterMode === 'url' ? 'Dán đường link (URL):' : 'Dán văn bản gốc:')}
+                   </label>
+                   {newsletterMode === 'text' ? (
+                       <textarea 
+                          value={newsletterInput} onChange={(e) => setNewsletterInput(e.target.value)}
+                          placeholder="Paste text here..."
+                          className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white placeholder-blue-600 focus:border-blue-500 h-32 custom-scrollbar"
+                       />
+                   ) : (
+                       <input 
+                         type="text" 
+                         value={newsletterInput} onChange={(e) => setNewsletterInput(e.target.value)}
+                         placeholder={newsletterMode === 'topic' ? "VD: Artificial Intelligence in Education" : "https://..."}
+                         className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white placeholder-blue-600 focus:border-blue-500"
+                       />
+                   )}
+                </div>
+
+                <div className="bg-blue-800/30 p-3 rounded-lg border border-blue-700/50 text-xs text-blue-200">
+                    <p className="font-bold mb-1 text-blue-100">Cấu trúc Bản tin (4 trang):</p>
+                    <ul className="list-disc pl-4 space-y-1">
+                        <li>Bài báo song ngữ (Anh-Việt) chi tiết.</li>
+                        <li>50 từ vựng trọng tâm (Bảng).</li>
+                        <li>Phân loại cấp độ B1-B2-C1.</li>
+                    </ul>
+                </div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={handleCreateNewsletter}
+                    disabled={isLoading}
+                    className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
+                      ${isLoading ? 'bg-blue-950 text-blue-500 border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
+                  >
+                    {isLoading ? (
+                      <>
+                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          <span className="text-sm">{loadingStatus || "Đang viết bản tin..."}</span>
+                      </>
+                    ) : (
+                      <>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>
+                          <span>Tạo Bản Tin</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+             </div>
+          )}
+
+          {/* === CONTENT FOR TAB 6: SETTINGS (NEW) === */}
           {activeTab === 'settings' && (
               <div className="space-y-6 animate-fade-in-up">
                   <div className="bg-blue-950/50 p-4 rounded-xl border border-blue-800/30">
@@ -1309,7 +1498,7 @@ VÍ DỤ OUTPUT:
         </div>
         
         {/* BOTTOM: SETTINGS BUTTON & FOOTER */}
-        <div className="p-4 bg-blue-950 text-blue-400 text-xs border-t border-blue-800">
+        <div className="p-4 bg-blue-950 text-blue-400 text-xs border-t border-blue-800 no-print">
            {/* Settings Trigger */}
            <button 
               onClick={() => {
@@ -1331,17 +1520,17 @@ VÍ DỤ OUTPUT:
       </div>
 
       {/* RIGHT PANEL: Result Preview */}
-      <div className="flex-1 bg-white h-full overflow-hidden flex flex-col relative font-sans">
+      <div className="main-content-container flex-1 bg-white h-full overflow-hidden flex flex-col relative font-sans">
         
         {/* Toolbar */}
-        <div className="bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center z-10 min-h-[70px]">
+        <div className="toolbar-container bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center z-10 min-h-[70px] no-print">
           <h2 className="font-bold text-xl text-slate-800 flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             {activeTab === 'upload' 
                ? (activeVariant ? `Xem trước: ${activeVariant.name}` : 'Xem trước đề thi') 
-               : (activeTab === 'vocab' ? 'Câu hỏi Chủ đề (Vocabulary)' : (activeTab === 'grammar' ? 'Câu hỏi Ngữ pháp' : (activeTab === 'settings' ? 'Thông tin & Cài đặt' : 'Nội dung biên soạn')))}
+               : (activeTab === 'vocab' ? 'Câu hỏi Chủ đề (Vocabulary)' : (activeTab === 'grammar' ? 'Câu hỏi Ngữ pháp' : (activeTab === 'newsletter' ? 'Bản Tin Song Ngữ' : (activeTab === 'settings' ? 'Thông tin & Cài đặt' : 'Nội dung biên soạn'))))}
           </h2>
           
           <div className="flex gap-2">
@@ -1351,24 +1540,46 @@ VÍ DỤ OUTPUT:
                 Tải đề này (.doc)
               </button>
             )}
-            {(activeTab === 'create' || activeTab === 'vocab' || activeTab === 'grammar') && createdContentHtml && (
-               <button onClick={downloadCreatedContent} className="px-5 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm flex items-center gap-2 transition-all">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                  Tải File Soạn (.doc)
-               </button>
+            {(activeTab === 'create' || activeTab === 'vocab' || activeTab === 'grammar' || activeTab === 'newsletter') && createdContentHtml && (
+               <>
+                 <button onClick={downloadCreatedContent} className="px-5 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm flex items-center gap-2 transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    Tải File Word
+                 </button>
+               </>
             )}
           </div>
         </div>
 
         {/* Scrollable Document Container */}
-        <div className="flex-1 overflow-y-auto p-0 custom-scrollbar flex justify-center bg-white">
+        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar bg-slate-100 flex justify-center">
            <style>{`
                 .generated-content { font-family: 'Be Vietnam Pro', 'Times New Roman', serif; }
-                .generated-content table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 16px; border: 2px solid #1e40af; background-color: #fff; }
-                .generated-content th, .generated-content td { border: 1px solid #94a3b8; padding: 10px; text-align: center; font-weight: 600; color: #0f172a; font-size: 16px; }
+                .generated-content table { 
+                  width: 100%; 
+                  border-collapse: collapse; 
+                  margin-top: 24px; 
+                  font-size: 16px; 
+                  border: 2px solid #1e40af; 
+                  background-color: #fff;
+                  table-layout: fixed; /* Fix table width */
+                }
+                .generated-content th, .generated-content td { 
+                  border: 1px solid #94a3b8; 
+                  padding: 10px; 
+                  text-align: left; 
+                  vertical-align: top; 
+                  font-weight: 500; 
+                  color: #0f172a; 
+                  font-size: 16px; 
+                  word-wrap: break-word; /* Break long words/links */
+                  overflow-wrap: break-word;
+                }
                 .generated-content tr:nth-child(even) { background-color: #f0f9ff; }
                 .generated-content mark { background-color: yellow; color: black; }
-                .generated-content h3 { margin-top: 28px; margin-bottom: 14px; color: #1e40af; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; font-weight: 800; font-size: 1.4em; }
+                .generated-content h1 { font-size: 2em; color: #1e40af; text-align: center; margin-bottom: 10px; }
+                .generated-content h2 { font-size: 1.6em; color: #475569; text-align: center; margin-bottom: 20px; font-style: italic; }
+                .generated-content h3 { margin-top: 28px; margin-bottom: 14px; color: #1e40af; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; font-weight: 800; font-size: 1.4em; background: none; }
                 .generated-content h4 { font-weight: 700; margin-bottom: 10px; }
                 .generated-content .ans-opt { display: block; margin-bottom: 6px; font-size: 17px; }
                 .generated-content b { color: #0f172a; font-weight: 700; }
@@ -1378,17 +1589,21 @@ VÍ DỤ OUTPUT:
                 .solution-item { background: #fff9ed; border: 1px solid #fed7aa; padding: 20px; margin-bottom: 20px; border-radius: 8px; font-size: 17px; }
                 .solution-item b { color: #c2410c; }
                 .solution-item i { color: #475569; }
+                .vocab-badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 0.85em; font-weight: bold; margin-left: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); border: 1px solid #ccc; }
+                .badge-b1 { background-color: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+                .badge-b2 { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
+                .badge-c1 { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
               `}</style>
 
            {/* VIEW FOR TAB 1 */}
            {activeTab === 'upload' && (
               activeVariant ? (
-                <div className="w-full max-w-[900px] bg-white min-h-full p-[40px] md:p-[60px] animate-fade-in-up border-x border-slate-50 mx-auto">
+                <div className="generated-content-wrapper w-full bg-white min-h-screen p-10 shadow-xl animate-fade-in-up">
                   <div className="generated-content prose prose-slate max-w-none text-lg leading-relaxed text-gray-900" dangerouslySetInnerHTML={{ __html: activeVariant.htmlContent }} />
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                  <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                  <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                   </div>
                   <p className="text-xl font-medium text-slate-400">Chưa có đề thi nào</p>
@@ -1398,7 +1613,7 @@ VÍ DỤ OUTPUT:
 
            {/* VIEW FOR SETTINGS */}
            {activeTab === 'settings' && (
-              <div className="w-full h-full bg-slate-50 flex items-center justify-center animate-fade-in-up p-8">
+              <div className="w-full h-full flex items-center justify-center animate-fade-in-up">
                  <div className="bg-white max-w-2xl w-full rounded-2xl shadow-xl p-10 border border-blue-100 text-center">
                     <div className="w-24 h-24 bg-blue-600 text-white rounded-full flex items-center justify-center text-4xl font-bold mx-auto mb-6 shadow-lg">H</div>
                     <h2 className="text-3xl font-bold text-blue-900 mb-2">Nguyễn Đức Hiền</h2>
@@ -1416,15 +1631,14 @@ VÍ DỤ OUTPUT:
               </div>
            )}
 
-           {/* VIEW FOR TAB 2, 3 & 4 */}
-           {(activeTab === 'create' || activeTab === 'vocab' || activeTab === 'grammar') && (
-              <div className="w-full h-full bg-white p-4 md:p-8 animate-fade-in-up">
+           {/* VIEW FOR TAB 2, 3, 4 & 5 */}
+           {(activeTab === 'create' || activeTab === 'vocab' || activeTab === 'grammar' || activeTab === 'newsletter') && (
+              <div className="generated-content-wrapper w-full min-h-screen bg-white p-10 shadow-xl animate-fade-in-up relative">
                 <div 
                     ref={contentEditableRef}
                     contentEditable={true}
                     suppressContentEditableWarning={true}
-                    className="generated-content prose prose-slate max-w-none w-full text-lg leading-relaxed text-gray-900 outline-none focus:ring-2 ring-blue-100 rounded-lg p-8 border border-gray-200 shadow-sm"
-                    style={{ minHeight: 'calc(100vh - 180px)' }}
+                    className="generated-content prose prose-slate max-w-none w-full text-lg leading-relaxed text-gray-900 outline-none min-h-[600px]"
                     dangerouslySetInnerHTML={{ __html: createdContentHtml }}
                 />
                  {isLoading && (
@@ -1434,7 +1648,7 @@ VÍ DỤ OUTPUT:
                  )}
                  {!createdContentHtml && !isLoading && (
                     <div className="absolute top-[30%] left-0 w-full text-center pointer-events-none opacity-40">
-                       <p className="text-xl text-slate-400 font-medium">Dán câu hỏi vào đây hoặc sử dụng công cụ bên trái để tạo...</p>
+                       <p className="text-xl text-slate-400 font-medium">Dán nội dung vào đây hoặc sử dụng công cụ bên trái...</p>
                     </div>
                  )}
               </div>
