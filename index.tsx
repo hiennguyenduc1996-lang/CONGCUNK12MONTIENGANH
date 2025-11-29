@@ -844,8 +844,11 @@ ${promptInput}
    - **TUYỆT ĐỐI KHÔNG** dùng màu nền (background-color) cho tiêu đề. 
    - Không bôi đen (background) xung quanh tiêu đề.
 
-2. **IN ĐẬM TỪ VỰNG:**
-   - Trong **PHẦN 1 (Bài báo)**: Hãy **in đậm (<b>)** 50 từ vựng/cụm từ trọng tâm trong văn bản Tiếng Anh **VÀ** in đậm nghĩa Tiếng Việt tương ứng ở cột bên cạnh để học sinh dễ đối chiếu.
+2. **IN ĐẬM TỪ VỰNG (QUAN TRỌNG):**
+   - Trong **PHẦN 1 (Bài báo)**: 
+     + Cột Tiếng Anh: **BẮT BUỘC IN ĐẬM (<b>)** 50 từ vựng/cụm từ trọng tâm.
+     + Cột Tiếng Việt: **BẮT BUỘC IN ĐẬM (<b>)** nghĩa tiếng Việt tương ứng của các từ đó. 
+     + **CHỈ** in đậm các từ vựng trọng tâm này, các từ ngữ thông thường khác **KHÔNG** được in đậm.
    - Trong **PHẦN 2 (Bảng từ vựng)**: Cột từ vựng để chữ thường, **KHÔNG** in đậm.
 
 **CẤU TRÚC TÀI LIỆU (HTML OUTPUT):**
