@@ -237,7 +237,7 @@ const App = () => {
       ".ans-opt { margin-bottom: 4pt; display: block; } " +
       "mark { background-color: yellow; } " + 
       "table { border-collapse: collapse; width: 100%; margin-top: 20px; border: 2px solid #000; table-layout: fixed; } " +
-      "td, th { border: 1px solid #000; padding: 8px; text-align: left; vertical-align: top; font-size: 12pt; word-wrap: break-word; } " +
+      "td, th { border: 1px solid #000 !important; padding: 8px; text-align: left; vertical-align: top; font-size: 12pt; word-wrap: break-word; } " +
       ".announcement-box { border: 2px solid #000; padding: 15px; margin: 15px 0; background-color: #f9f9f9; width: 100%; } " +
       ".bilingual-text { display: flex; gap: 20px; margin-bottom: 20px; } " +
       ".bilingual-col { flex: 1; } " +
@@ -855,7 +855,7 @@ ${promptInput}
 
 **PHẦN 1: BÀI BÁO SONG NGỮ (BILINGUAL ARTICLE)**
 - Viết một bài báo hoặc câu chuyện hấp dẫn về chủ đề trên.
-- Trình bày dạng **BẢNG 2 CỘT (HTML TABLE)** không viền hoặc viền mờ.
+- Trình bày dạng **BẢNG 2 CỘT (HTML TABLE)** có đường viền (border) để ngăn cách.
   + Cột Trái: Tiếng Anh (Có in đậm từ vựng trọng tâm).
   + Cột Phải: Tiếng Việt (Dịch song song, in đậm nghĩa từ trọng tâm tương ứng).
 
@@ -872,7 +872,7 @@ ${promptInput}
   + <span class="vocab-badge badge-b1" style="background-color:#dbeafe; color:#1e40af; border:1px solid #93c5fd;">B1</span>
   + <span class="vocab-badge badge-b2" style="background-color:#fef9c3; color:#854d0e; border:1px solid #fde047;">B2</span>
   + <span class="vocab-badge badge-c1" style="background-color:#fee2e2; color:#991b1b; border:1px solid #fca5a5;">C1</span>
-- Bảng từ vựng phải có border, cellpadding đẹp.
+- Tất cả các bảng phải có border="1", cellpadding đẹp.
 
 Hãy làm thật chi tiết và đẹp mắt.
 `;
