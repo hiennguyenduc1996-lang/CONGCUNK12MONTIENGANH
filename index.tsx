@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
 // Define mammoth type for TypeScript
 declare global {
@@ -134,6 +134,10 @@ const App = () => {
   const [activeTab, setActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'newsletter' | 'settings'>('upload');
   const [lastActiveTab, setLastActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'newsletter'>('upload');
 
+  // --- API KEY STATE ---
+  const [userApiKey, setUserApiKey] = useState<string>("");
+  const [showApiKey, setShowApiKey] = useState<boolean>(false);
+
   // --- TAB 1 STATE: FILE UPLOAD & SHUFFLE ---
   const [file, setFile] = useState<File | null>(null);
   const [numCopies, setNumCopies] = useState<number>(1);
@@ -174,6 +178,22 @@ const App = () => {
   const [loadingStatus, setLoadingStatus] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
+  // --- INITIALIZATION ---
+  useEffect(() => {
+    const storedKey = localStorage.getItem("user_gemini_api_key");
+    if (storedKey) setUserApiKey(storedKey);
+  }, []);
+
+  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVal = e.target.value;
+    setUserApiKey(newVal);
+    localStorage.setItem("user_gemini_api_key", newVal);
+  };
+
+  const getApiKey = () => {
+    return userApiKey.trim() || process.env.API_KEY || "";
+  };
+
   // Update focus when type changes (Tab 2)
   useEffect(() => {
     const typeObj = QUESTION_DATA.find(t => t.id === createType);
@@ -204,6 +224,13 @@ const App = () => {
     const tableRegex = /<table[\s\S]*?<\/table>/gi;
     const tables = fullHtml.match(tableRegex);
     return tables ? tables[tables.length - 1] : "<p>Không tìm thấy bảng đáp án</p>";
+  };
+
+  const cleanAndFormatHtml = (rawHtml: string): string => {
+    let clean = rawHtml.replace(/```html|```/g, "").trim();
+    // Replace Markdown bold (**text**) with HTML bold (<b>text</b>)
+    clean = clean.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+    return clean;
   };
 
   const createWordHtml = (content: string, title: string) => {
@@ -273,7 +300,7 @@ const App = () => {
     const totalBatches = batches.length;
 
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: getApiKey() });
         const modelId = "gemini-2.5-flash";
 
         for (let i = 0; i < totalBatches; i++) {
@@ -307,7 +334,7 @@ NHIỆM VỤ:
                 config: { temperature: 0.5 } 
             });
 
-            const html = (response.text || "").replace(/```html|```/g, "").trim();
+            const html = cleanAndFormatHtml(response.text || "");
             setCreatedContentHtml(prev => prev + html);
         }
 
@@ -375,47 +402,76 @@ NHIỆM VỤ:
     const seed = Math.floor(Math.random() * 10000000);
 
     const systemInstruction = `
-Bạn là trợ lý AI chuyên tạo đề Tiếng Anh.
-Nhiệm vụ: Phân tích tài liệu được cung cấp, chọn ngẫu nhiên các bài tập để tạo thành một đề thi hoàn chỉnh gồm đúng **40 câu hỏi**.
+Bạn là Hệ thống Xáo trộn Đề thi Tiếng Anh Chuyên nghiệp.
+Nhiệm vụ: Chọn ngẫu nhiên 40 câu hỏi từ tài liệu và tạo đề mới hoàn chỉnh.
 
-QUY TẮC QUAN TRỌNG:
-1. **ĐỊNH DẠNG (BẮT BUỘC GIỮ NGUYÊN)**:
-   - File gốc có từ in đậm (<b>), in nghiêng (<i>), gạch chân (<u>), hoặc tô màu (<mark>) -> File mới **PHẢI** giữ nguyên y hệt.
-   - Đây là các manh mối quan trọng để làm bài nên KHÔNG được làm mất.
+QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
 
-2. **CẤU TRÚC ĐỀ & XÁO TRỘN**:
-   - Hãy trích xuất các bài tập từ nguồn và sắp xếp ngẫu nhiên thứ tự các bài.
-   - **Bài Đọc Hiểu (Reading)**: XÁO TRỘN thứ tự câu hỏi trong bài + XÁO TRỘN thứ tự đáp án A, B, C, D.
-   - **Bài Đục Lỗ (Cloze Text)**: 
-     + **GIỮ NGUYÊN** thứ tự câu hỏi (để đảm bảo mạch văn).
-     + **SỬA SỐ** trong đoạn văn: Nếu bài bị đẩy lên câu 1, hãy sửa số trong bài thành "**(1)_______**".
-     + XÁO TRỘN thứ tự đáp án A, B, C, D.
-   - **Các bài khác (Phát âm, Ngữ pháp...)**: XÁO TRỘN thứ tự câu hỏi + XÁO TRỘN thứ tự đáp án A, B, C, D.
+1. **CHỌN LỌC (SELECT)**:
+   - Trích xuất ngẫu nhiên 40 câu hỏi (trắc nghiệm) từ tài liệu đầu vào.
+   - Nếu câu hỏi thuộc một bài đọc (Reading) hoặc bài đục lỗ (Cloze Test), **PHẢI LẤY CẢ ĐOẠN VĂN ĐI KÈM**.
+   - **TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT VĂN BẢN BÀI ĐỌC**.
 
-3. **CÔ LẬP**: Câu hỏi của bài đọc nào thì nằm yên trong bài đọc đó, không được trộn lẫn sang bài khác.
+2. **XÁO TRỘN (SHUFFLE)**:
+   - **Nhóm Đọc Hiểu (Reading)**: 
+     + Xáo trộn thứ tự các câu hỏi trong nhóm.
+     + Xáo trộn thứ tự đáp án A, B, C, D của từng câu.
+   - **Nhóm Đục Lỗ (Cloze Test/Gap Fill)**:
+     + **GIỮ NGUYÊN** thứ tự câu hỏi (1, 2, 3...) để đảm bảo mạch văn.
+     + Xáo trộn thứ tự đáp án A, B, C, D.
+   - **Các Nhóm Khác (Ngữ pháp, Từ vựng, Sắp xếp...)**:
+     + Xáo trộn thứ tự câu hỏi.
+     + Xáo trộn thứ tự đáp án A, B, C, D.
+   - **Xáo trộn vị trí các Bài tập lớn**: Ví dụ bài Đục lỗ có thể chuyển từ cuối đề lên đầu đề.
 
-4. **ĐỊNH DẠNG CÂU HỎI (TUYỆT ĐỐI KHÔNG DÙNG MARKDOWN)**:
-   - KHÔNG được dùng dấu ** để in đậm. Bắt buộc dùng thẻ <b>.
-   - Ví dụ đúng: <b>Question 1.</b>
-   - Ví dụ sai: **Question 1.**
-   - Đáp án trình bày xuống dòng: <div class="ans-opt">A. ...</div>.
+3. **ĐÁNH SỐ & SỬA ĐỔI (RENUMBER & MODIFY) - [CỰC KỲ QUAN TRỌNG]**:
+   - Đánh số lại toàn bộ câu hỏi từ 1 đến 40.
+   - **VỚI BÀI ĐỤC LỖ (CLOZE TEST)**:
+     + Khi vị trí bài thay đổi (ví dụ từ câu 35-40 thành câu 1-5), số thứ tự câu hỏi thay đổi.
+     + **BẮT BUỘC PHẢI TÌM VÀ SỬA SỐ TRONG ĐOẠN VĂN** cho khớp với số mới.
+     + Ví dụ: Tìm số cũ "(35)", "35", "[35]" trong văn bản và sửa thành "(1)" hoặc "(1)_______".
+     + Đảm bảo đoạn văn chứa các chỗ trống có số thứ tự khớp hoàn toàn với các câu hỏi bên dưới.
 
-5. **BẢNG ĐÁP ÁN (BẮT BUỘC)**:
-   - Tạo bảng HTML (<table>) ở cuối cùng.
+4. **ĐỊNH DẠNG (FORMATTING)**:
+   - Giữ nguyên định dạng gốc: **in đậm (<b>)**, *in nghiêng (<i>)*, <u>gạch chân</u>.
+   - **KHÔNG DÙNG MARKDOWN** (như **bold**). Dùng thẻ HTML <b>bold</b>.
+   - Đáp án: In đậm ký tự đầu: <b>A.</b>, <b>B.</b>, <b>C.</b>, <b>D.</b> (Ví dụ: <b>A.</b> Apple).
+   - Mỗi đáp án một dòng: <div class="ans-opt"><b>A.</b> ...</div>.
+   - Không dùng list tự động (<ol>). Dùng thủ công: <b>Question 1.</b>
+
+5. **ĐÁP ÁN (ANSWER KEY)**:
+   - Tạo bảng HTML (<table>) có viền (border="1") ở cuối cùng.
    - Kích thước: 4 hàng, 10 cột.
-   - Nội dung: "1.A", "2.B"... dựa trên đáp án đúng (từ file gốc được highlight/gạch chân).
+   - Nội dung: "1.A", "2.B"...
    - Tiêu đề: <h3>Answer Key - Code: ${testCode}</h3>
 `;
 
-    const userPrompt = `Tạo mã đề ${testCode}. Seed: ${seed}. Chọn ngẫu nhiên 40 câu. Quy tắc trộn: Reading (Xáo câu + Xáo opt), Cloze (Giữ câu + Xáo opt + Sửa số), Khác (Xáo câu + Xáo opt). Giữ nguyên định dạng in đậm/gạch chân/highlight. Tuyệt đối không dùng markdown, dùng HTML <b>.`;
+    const userPrompt = `Tạo mã đề ${testCode}. Chọn 40 câu. Yêu cầu: Reading (Xáo câu/opt), Cloze (Giữ câu/Xáo opt/SỬA SỐ TRONG BÀI THÀNH (X)_______), Khác (Xáo câu/opt). In đậm A.B.C.D. Không dùng Markdown.`;
+
+    const safetySettings = [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
+    ];
 
     const response = await ai.models.generateContent({
       model: modelId,
       contents: { parts: [contentPart, { text: userPrompt }] },
-      config: { systemInstruction, temperature: 0.95 }
+      config: { 
+          systemInstruction, 
+          temperature: 0.95,
+          safetySettings: safetySettings
+      }
     });
 
-    const cleanHtml = (response.text || "").replace(/```html|```/g, "").trim();
+    const responseText = response.text || "";
+    if (!responseText.trim()) {
+        throw new Error("AI trả về kết quả rỗng. Vui lòng thử lại.");
+    }
+
+    const cleanHtml = cleanAndFormatHtml(responseText);
     const answerKey = extractAnswerKeyTable(cleanHtml);
 
     return {
@@ -441,7 +497,7 @@ QUY TẮC QUAN TRỌNG:
     setIsLoading(true); setError(null); setGeneratedVariants([]);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: getApiKey() });
       const modelId = "gemini-2.5-flash"; 
       let contentPart: any = null;
 
@@ -456,6 +512,7 @@ QUY TẮC QUAN TRỌNG:
       }
 
       // 2. Sequential Processing Loop
+      let successCount = 0;
       for (let i = 0; i < codesToGenerate.length; i++) {
          const code = codesToGenerate[i];
          setLoadingStatus(`Đang tạo đề ${i + 1}/${codesToGenerate.length} (Mã đề: ${code})...`);
@@ -468,13 +525,23 @@ QUY TẮC QUAN TRỌNG:
                 if (prev.length === 0) setSelectedVariantId(variant.id);
                 return newList;
              });
+             successCount++;
          } catch (e: any) {
              console.error(`Lỗi tạo mã đề ${code}:`, e);
-             // Optionally show a non-blocking error or just continue
+             setError(`Lỗi tạo mã đề ${code}: ${e.message}`);
+             // Continue to next code
          }
       }
 
-    } catch (err: any) { setError("Lỗi: " + err.message); } 
+      if (successCount === 0) {
+          setError("Không thể tạo được đề nào. Vui lòng thử lại hoặc kiểm tra file.");
+      } else if (successCount < codesToGenerate.length) {
+          console.warn("Một số đề không tạo được do lỗi mạng hoặc AI.");
+      }
+
+    } catch (err: any) { 
+        setError("Lỗi nghiêm trọng: " + err.message); 
+    } 
     finally { setIsLoading(false); setLoadingStatus(""); }
   };
 
@@ -484,7 +551,7 @@ QUY TẮC QUAN TRỌNG:
     setIsLoading(true); setError(null); 
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: getApiKey() });
       const modelId = "gemini-2.5-flash"; 
       let contentPart: any = null;
 
@@ -527,7 +594,7 @@ YÊU CẦU:
         config: { temperature: 0.5 }
       });
 
-      const solutionHtml = (response.text || "").replace(/```html|```/g, "").trim();
+      const solutionHtml = cleanAndFormatHtml(response.text || "");
       
       const solutionVariant: TestVariant = {
         id: "solution-guide",
@@ -581,7 +648,7 @@ YÊU CẦU:
     let currentQuestionNum = 1;
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: getApiKey() });
       const modelId = "gemini-2.5-flash"; 
 
       // Loop to handle batching
@@ -639,7 +706,7 @@ Vui lòng soạn thảo bài tập theo yêu cầu chi tiết sau:
           config: { temperature: 0.7 } 
         });
 
-        const html = (response.text || "").replace(/```html|```/g, "").trim();
+        const html = cleanAndFormatHtml(response.text || "");
         
         // Append new content immediately
         setCreatedContentHtml(prev => prev + `<div class="batch-result mb-8">${html}</div>`);
@@ -683,7 +750,7 @@ Vui lòng soạn thảo bài tập theo yêu cầu chi tiết sau:
     let currentQ = 1;
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: getApiKey() });
       const modelId = "gemini-2.5-flash";
 
       for (let i = 0; i < batches; i++) {
@@ -717,7 +784,7 @@ VÍ DỤ OUTPUT:
           config: { temperature: 0.8 } 
         });
 
-        const html = (response.text || "").replace(/```html|```/g, "").trim();
+        const html = cleanAndFormatHtml(response.text || "");
         setCreatedContentHtml(prev => prev + `<div class="batch-result mb-8">${html}</div>`);
         currentQ += countInBatch;
       }
@@ -743,7 +810,7 @@ VÍ DỤ OUTPUT:
     let currentQ = 1;
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: getApiKey() });
       const modelId = "gemini-2.5-flash";
 
       for (let i = 0; i < batches; i++) {
@@ -778,7 +845,7 @@ VÍ DỤ OUTPUT:
           config: { temperature: 0.8 } 
         });
 
-        const html = (response.text || "").replace(/```html|```/g, "").trim();
+        const html = cleanAndFormatHtml(response.text || "");
         setCreatedContentHtml(prev => prev + `<div class="batch-result mb-8">${html}</div>`);
         currentQ += countInBatch;
       }
@@ -804,7 +871,7 @@ VÍ DỤ OUTPUT:
      setLoadingStatus("Đang thiết kế bản tin (Có thể mất 30s-1 phút)...");
 
      try {
-       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+       const ai = new GoogleGenAI({ apiKey: getApiKey() });
        // Use gemini-2.5-flash which is good for search and fast text generation
        const modelId = "gemini-2.5-flash"; 
 
@@ -883,7 +950,7 @@ Hãy làm thật chi tiết và đẹp mắt.
          }
        });
 
-       const html = (response.text || "").replace(/```html|```/g, "").trim();
+       const html = cleanAndFormatHtml(response.text || "");
        
        // Clean up grounding metadata if present in text (usually redundant in output)
        setCreatedContentHtml(html);
@@ -1461,6 +1528,39 @@ Hãy làm thật chi tiết và đẹp mắt.
                       <p className="text-blue-200 text-xs leading-relaxed italic">
                           Trường THCS và THPT Nguyễn Khuyến Bình Dương.
                       </p>
+                  </div>
+
+                  <div className="bg-blue-950/50 p-4 rounded-xl border border-blue-800/30">
+                    <h3 className="text-white font-bold text-sm mb-3 border-b border-blue-800 pb-2">CẤU HÌNH HỆ THỐNG</h3>
+                    <label className="text-xs font-bold text-blue-300 uppercase mb-2 block flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+                        Google Gemini API Key
+                    </label>
+                    <div className="relative">
+                        <input 
+                        type={showApiKey ? "text" : "password"}
+                        value={userApiKey}
+                        onChange={handleApiKeyChange}
+                        placeholder="Dán API Key của bạn..."
+                        className="w-full bg-blue-900/50 border border-blue-700/50 rounded-lg pl-3 pr-10 py-2 text-xs text-white placeholder-blue-500 focus:outline-none focus:border-blue-400 mb-1"
+                        />
+                        <button 
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-blue-400 hover:text-white"
+                        >
+                        {showApiKey ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                        )}
+                        </button>
+                    </div>
+                    <p className="text-[10px] text-blue-400 italic mt-1 flex justify-between">
+                        <span>Key được lưu trong trình duyệt của bạn.</span>
+                        <span className={userApiKey.trim() ? "text-green-400 font-bold" : "text-amber-400 font-bold"}>
+                            {userApiKey.trim() ? "● Đang dùng Key cá nhân" : "● Đang dùng Key mặc định"}
+                        </span>
+                    </p>
                   </div>
               </div>
           )}
