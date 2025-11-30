@@ -134,10 +134,6 @@ const App = () => {
   const [activeTab, setActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'newsletter' | 'settings'>('upload');
   const [lastActiveTab, setLastActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'newsletter'>('upload');
 
-  // --- API KEY STATE ---
-  const [userApiKey, setUserApiKey] = useState<string>("");
-  const [showApiKey, setShowApiKey] = useState<boolean>(false);
-
   // --- TAB 1 STATE: FILE UPLOAD & SHUFFLE ---
   const [file, setFile] = useState<File | null>(null);
   const [numCopies, setNumCopies] = useState<number>(1);
@@ -177,22 +173,6 @@ const App = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingStatus, setLoadingStatus] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-
-  // --- INITIALIZATION ---
-  useEffect(() => {
-    const storedKey = localStorage.getItem("user_gemini_api_key");
-    if (storedKey) setUserApiKey(storedKey);
-  }, []);
-
-  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVal = e.target.value;
-    setUserApiKey(newVal);
-    localStorage.setItem("user_gemini_api_key", newVal);
-  };
-
-  const getApiKey = () => {
-    return userApiKey.trim() || process.env.API_KEY || "";
-  };
 
   // Update focus when type changes (Tab 2)
   useEffect(() => {
@@ -293,7 +273,7 @@ const App = () => {
     const totalBatches = batches.length;
 
     try {
-        const ai = new GoogleGenAI({ apiKey: getApiKey() });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const modelId = "gemini-2.5-flash";
 
         for (let i = 0; i < totalBatches; i++) {
@@ -396,30 +376,38 @@ NHIỆM VỤ:
 
     const systemInstruction = `
 Bạn là trợ lý AI chuyên tạo đề Tiếng Anh.
-Nhiệm vụ: Tạo đề ôn tập mới (đủ 40 câu) từ tài liệu cung cấp.
+Nhiệm vụ: Phân tích tài liệu được cung cấp, chọn ngẫu nhiên các bài tập để tạo thành một đề thi hoàn chỉnh gồm đúng **40 câu hỏi**.
 
 QUY TẮC QUAN TRỌNG:
-1. **OUTPUT HTML**: Tiêu đề <h3>, Nội dung <p>. 
-   - **TUYỆT ĐỐI GIỮ NGUYÊN** định dạng: <mark> (highlight), <b> (in đậm), <u> (gạch chân), <i> (in nghiêng) trong câu hỏi và văn bản gốc.
-   - Đây là các từ khóa quan trọng để làm bài (gợi ý/nhấn mạnh) nên KHÔNG được làm mất.
-2. **XÁO TRỘN**:
-   - **Bài Đọc Hiểu (Reading)**: GIỮ NGUYÊN thứ tự câu hỏi, CHỈ Xáo trộn đáp án A, B, C, D.
-   - **Bài Đục Lỗ (Cloze)**: GIỮ NGUYÊN thứ tự câu hỏi để đảm bảo logic văn bản. 
-     **QUAN TRỌNG**: SỬA LẠI số chỗ trống trong bài thành định dạng: **(Số câu)_______** (Ví dụ: **(1)_______**). 
-     Xáo trộn đáp án A, B, C, D.
-   - **Các dạng bài khác**: Xáo trộn cả câu hỏi và đáp án A, B, C, D.
-3. **CÔ LẬP NHÓM BÀI**: Tuyệt đối không để câu hỏi của bài đọc này nhảy sang bài đọc khác.
-4. **ĐỊNH DẠNG**:
-   - "<b>Question X.</b>" (1-40).
-   - Đáp án: <div class="ans-opt">A. ...</div> (xuống dòng).
-5. **BẢNG ĐÁP ÁN (BẮT BUỘC DẠNG BẢNG)**:
-   - Dựa vào highlight/đáp án, tạo bảng HTML (<table>).
-   - Bảng gồm 4 hàng, 10 cột.
-   - Nội dung ô: "1.A", "2.B", v.v.
-   - Tiêu đề bảng: <h3>Answer Key - Code: ${testCode}</h3>
+1. **ĐỊNH DẠNG (BẮT BUỘC GIỮ NGUYÊN)**:
+   - File gốc có từ in đậm (<b>), in nghiêng (<i>), gạch chân (<u>), hoặc tô màu (<mark>) -> File mới **PHẢI** giữ nguyên y hệt.
+   - Đây là các manh mối quan trọng để làm bài nên KHÔNG được làm mất.
+
+2. **CẤU TRÚC ĐỀ & XÁO TRỘN**:
+   - Hãy trích xuất các bài tập từ nguồn và sắp xếp ngẫu nhiên thứ tự các bài.
+   - **Bài Đọc Hiểu (Reading)**: XÁO TRỘN thứ tự câu hỏi trong bài + XÁO TRỘN thứ tự đáp án A, B, C, D.
+   - **Bài Đục Lỗ (Cloze Text)**: 
+     + **GIỮ NGUYÊN** thứ tự câu hỏi (để đảm bảo mạch văn).
+     + **SỬA SỐ** trong đoạn văn: Nếu bài bị đẩy lên câu 1, hãy sửa số trong bài thành "**(1)_______**".
+     + XÁO TRỘN thứ tự đáp án A, B, C, D.
+   - **Các bài khác (Phát âm, Ngữ pháp...)**: XÁO TRỘN thứ tự câu hỏi + XÁO TRỘN thứ tự đáp án A, B, C, D.
+
+3. **CÔ LẬP**: Câu hỏi của bài đọc nào thì nằm yên trong bài đọc đó, không được trộn lẫn sang bài khác.
+
+4. **ĐỊNH DẠNG CÂU HỎI (TUYỆT ĐỐI KHÔNG DÙNG MARKDOWN)**:
+   - KHÔNG được dùng dấu ** để in đậm. Bắt buộc dùng thẻ <b>.
+   - Ví dụ đúng: <b>Question 1.</b>
+   - Ví dụ sai: **Question 1.**
+   - Đáp án trình bày xuống dòng: <div class="ans-opt">A. ...</div>.
+
+5. **BẢNG ĐÁP ÁN (BẮT BUỘC)**:
+   - Tạo bảng HTML (<table>) ở cuối cùng.
+   - Kích thước: 4 hàng, 10 cột.
+   - Nội dung: "1.A", "2.B"... dựa trên đáp án đúng (từ file gốc được highlight/gạch chân).
+   - Tiêu đề: <h3>Answer Key - Code: ${testCode}</h3>
 `;
 
-    const userPrompt = `Tạo mã đề ${testCode}. Seed: ${seed}. Nhớ giữ nguyên thứ tự câu hỏi Reading/Cloze, chỉ xáo option. Bài Cloze phải sửa số thành (X)_______. Các bài khác xáo cả câu hỏi. Bắt buộc tạo BẢNG đáp án chuẩn 4x10 ở cuối.`;
+    const userPrompt = `Tạo mã đề ${testCode}. Seed: ${seed}. Chọn ngẫu nhiên 40 câu. Quy tắc trộn: Reading (Xáo câu + Xáo opt), Cloze (Giữ câu + Xáo opt + Sửa số), Khác (Xáo câu + Xáo opt). Giữ nguyên định dạng in đậm/gạch chân/highlight. Tuyệt đối không dùng markdown, dùng HTML <b>.`;
 
     const response = await ai.models.generateContent({
       model: modelId,
@@ -453,7 +441,7 @@ QUY TẮC QUAN TRỌNG:
     setIsLoading(true); setError(null); setGeneratedVariants([]);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: getApiKey() });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const modelId = "gemini-2.5-flash"; 
       let contentPart: any = null;
 
@@ -496,7 +484,7 @@ QUY TẮC QUAN TRỌNG:
     setIsLoading(true); setError(null); 
     
     try {
-      const ai = new GoogleGenAI({ apiKey: getApiKey() });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const modelId = "gemini-2.5-flash"; 
       let contentPart: any = null;
 
@@ -593,7 +581,7 @@ YÊU CẦU:
     let currentQuestionNum = 1;
 
     try {
-      const ai = new GoogleGenAI({ apiKey: getApiKey() });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const modelId = "gemini-2.5-flash"; 
 
       // Loop to handle batching
@@ -617,6 +605,7 @@ Vui lòng soạn thảo bài tập theo yêu cầu chi tiết sau:
 - **Trong các bài đọc điền từ (Cloze/Gap fill), vị trí cần điền phải có định dạng: (Số câu)_______ (Ví dụ: (1)_______).**
 
 **YÊU CẦU ĐỊNH DẠNG HTML (BẮT BUỘC):**
+- TUYỆT ĐỐI KHÔNG DÙNG MARKDOWN (**text**). Dùng thẻ <b>text</b> để in đậm.
 - Sử dụng thẻ <h3> cho tiêu đề bài (VD: Passage ${batchIndex}).
 - Sử dụng thẻ <b> cho các từ khóa quan trọng hoặc số thứ tự câu hỏi (VD: <b>Question ${currentQuestionNum}.</b>).
 - Các đáp án phải xuống dòng, sử dụng thẻ <div class="ans-opt">A...</div>.
@@ -694,7 +683,7 @@ Vui lòng soạn thảo bài tập theo yêu cầu chi tiết sau:
     let currentQ = 1;
 
     try {
-      const ai = new GoogleGenAI({ apiKey: getApiKey() });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const modelId = "gemini-2.5-flash";
 
       for (let i = 0; i < batches; i++) {
@@ -710,7 +699,7 @@ Mức độ: ${levelName}.
 YÊU CẦU:
 - Bắt đầu đánh số từ: **Question ${currentQ}**.
 - Mỗi câu hỏi có 4 đáp án A, B, C, D.
-- Định dạng HTML chuẩn:
+- Định dạng HTML chuẩn (KHÔNG dùng Markdown **bold**):
   + Câu hỏi: <b>Question X.</b> [Nội dung câu hỏi]
   + Đáp án: <div class="ans-opt">A. ...</div> (xuống dòng từng đáp án)
 - **BẮT BUỘC**: Cuối mỗi đợt, tạo Bảng Đáp Án (HTML Table) cho các câu hỏi này.
@@ -754,7 +743,7 @@ VÍ DỤ OUTPUT:
     let currentQ = 1;
 
     try {
-      const ai = new GoogleGenAI({ apiKey: getApiKey() });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const modelId = "gemini-2.5-flash";
 
       for (let i = 0; i < batches; i++) {
@@ -771,7 +760,7 @@ YÊU CẦU:
 - Bắt đầu đánh số từ: **Question ${currentQ}**.
 - Câu hỏi cần tập trung sâu vào chuyên đề đã chọn.
 - Mỗi câu hỏi có 4 đáp án A, B, C, D.
-- Định dạng HTML chuẩn:
+- Định dạng HTML chuẩn (KHÔNG dùng Markdown **bold**):
   + Câu hỏi: <b>Question X.</b> [Nội dung câu hỏi]
   + Đáp án: <div class="ans-opt">A. ...</div> (xuống dòng từng đáp án)
 - **BẮT BUỘC**: Cuối mỗi đợt, tạo Bảng Đáp Án (HTML Table) cho các câu hỏi này.
@@ -815,7 +804,7 @@ VÍ DỤ OUTPUT:
      setLoadingStatus("Đang thiết kế bản tin (Có thể mất 30s-1 phút)...");
 
      try {
-       const ai = new GoogleGenAI({ apiKey: getApiKey() });
+       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
        // Use gemini-2.5-flash which is good for search and fast text generation
        const modelId = "gemini-2.5-flash"; 
 
@@ -856,6 +845,7 @@ ${promptInput}
      + Cột Tiếng Anh: **BẮT BUỘC IN ĐẬM (<b>)** 50 từ vựng/cụm từ trọng tâm.
      + Cột Tiếng Việt: **BẮT BUỘC IN ĐẬM (<b>)** nghĩa tiếng Việt tương ứng của các từ đó. 
      + **CHỈ** in đậm các từ vựng trọng tâm này, các từ ngữ thông thường khác **KHÔNG** được in đậm.
+     + KHÔNG DÙNG Markdown **bold**.
    - Trong **PHẦN 2 (Bảng từ vựng)**: Cột từ vựng để chữ thường, **KHÔNG** in đậm.
 
 **CẤU TRÚC TÀI LIỆU (HTML OUTPUT):**
@@ -1471,39 +1461,6 @@ Hãy làm thật chi tiết và đẹp mắt.
                       <p className="text-blue-200 text-xs leading-relaxed italic">
                           Trường THCS và THPT Nguyễn Khuyến Bình Dương.
                       </p>
-                  </div>
-
-                  <div className="bg-blue-950/50 p-4 rounded-xl border border-blue-800/30">
-                    <h3 className="text-white font-bold text-sm mb-3 border-b border-blue-800 pb-2">CẤU HÌNH HỆ THỐNG</h3>
-                    <label className="text-xs font-bold text-blue-300 uppercase mb-2 block flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
-                        Google Gemini API Key
-                    </label>
-                    <div className="relative">
-                        <input 
-                        type={showApiKey ? "text" : "password"}
-                        value={userApiKey}
-                        onChange={handleApiKeyChange}
-                        placeholder="Dán API Key của bạn..."
-                        className="w-full bg-blue-900/50 border border-blue-700/50 rounded-lg pl-3 pr-10 py-2 text-xs text-white placeholder-blue-500 focus:outline-none focus:border-blue-400 mb-1"
-                        />
-                        <button 
-                        onClick={() => setShowApiKey(!showApiKey)}
-                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-blue-400 hover:text-white"
-                        >
-                        {showApiKey ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                        ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                        )}
-                        </button>
-                    </div>
-                    <p className="text-[10px] text-blue-400 italic mt-1 flex justify-between">
-                        <span>Key được lưu trong trình duyệt của bạn.</span>
-                        <span className={userApiKey.trim() ? "text-green-400 font-bold" : "text-amber-400 font-bold"}>
-                            {userApiKey.trim() ? "● Đang dùng Key cá nhân" : "● Đang dùng Key mặc định"}
-                        </span>
-                    </p>
                   </div>
               </div>
           )}
