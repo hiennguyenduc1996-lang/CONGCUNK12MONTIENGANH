@@ -399,7 +399,9 @@ Bạn là trợ lý AI chuyên tạo đề Tiếng Anh.
 Nhiệm vụ: Tạo đề ôn tập mới (đủ 40 câu) từ tài liệu cung cấp.
 
 QUY TẮC QUAN TRỌNG:
-1. **OUTPUT HTML**: Tiêu đề <h3>, Nội dung <p>. Giữ nguyên <mark> highlight.
+1. **OUTPUT HTML**: Tiêu đề <h3>, Nội dung <p>. 
+   - **TUYỆT ĐỐI GIỮ NGUYÊN** định dạng: <mark> (highlight), <b> (in đậm), <u> (gạch chân), <i> (in nghiêng) trong câu hỏi và văn bản gốc.
+   - Đây là các từ khóa quan trọng để làm bài (gợi ý/nhấn mạnh) nên KHÔNG được làm mất.
 2. **XÁO TRỘN**:
    - **Bài Đọc Hiểu (Reading)**: GIỮ NGUYÊN thứ tự câu hỏi, CHỈ Xáo trộn đáp án A, B, C, D.
    - **Bài Đục Lỗ (Cloze)**: GIỮ NGUYÊN thứ tự câu hỏi để đảm bảo logic văn bản. 
@@ -465,19 +467,24 @@ QUY TẮC QUAN TRỌNG:
         contentPart = { text: `SOURCE CONTENT:\n${extractedHtml.substring(0, 800000)}` };
       }
 
-      setLoadingStatus(`Đang xử lý song song ${codesToGenerate.length} đề thi... (Vui lòng đợi)`);
-
-      // 2. Run Parallel Requests
-      const variantPromises = codesToGenerate.map(async (code) => {
-          const variant = await generateSingleTest(ai, modelId, contentPart, code);
-          setGeneratedVariants(prev => {
-            const newList = [...prev, variant];
-            if (prev.length === 0) setSelectedVariantId(variant.id);
-            return newList;
-          });
-      });
-
-      await Promise.all(variantPromises);
+      // 2. Sequential Processing Loop
+      for (let i = 0; i < codesToGenerate.length; i++) {
+         const code = codesToGenerate[i];
+         setLoadingStatus(`Đang tạo đề ${i + 1}/${codesToGenerate.length} (Mã đề: ${code})...`);
+         
+         try {
+             const variant = await generateSingleTest(ai, modelId, contentPart, code);
+             setGeneratedVariants(prev => {
+                const newList = [...prev, variant];
+                // Automatically select the first one generated
+                if (prev.length === 0) setSelectedVariantId(variant.id);
+                return newList;
+             });
+         } catch (e: any) {
+             console.error(`Lỗi tạo mã đề ${code}:`, e);
+             // Optionally show a non-blocking error or just continue
+         }
+      }
 
     } catch (err: any) { setError("Lỗi: " + err.message); } 
     finally { setIsLoading(false); setLoadingStatus(""); }
