@@ -694,16 +694,16 @@ YÊU CẦU:
     }
 
     const prompt = `
-    You are an expert English Exam REPAIR ENGINE and Formatter.
-    Your goal is to normalize a raw exam file into a perfect structured JSON.
-    The input file likely has BAD FORMATTING, MISSING LABELS, or MERGED TEXT.
+    You are an expert English Exam Formatter and Parser.
+    Your goal is to normalize a raw exam file into a standard structured JSON.
+    The input file may have POOR FORMATTING (e.g., split lines, missing answer labels, merged text, weird characters).
 
-    **CRITICAL REPAIR RULES (YOU MUST FIX THE DATA):**
-    1. **REPAIR SPLIT LINES:** If "Quest" is on line 1 and "ion 1" on line 2, join them.
-    2. **INFER ANSWER LABELS:** If answers are listed like "apple banana cat dog" without A/B/C/D, assign them A, B, C, D automatically. If only 3 answers exist, assign A, B, C.
-    3. **SEPARATE STUCK TEXT:** "Question 1.HelloA.Hi" -> Q: "Hello", A: "Hi".
-    4. **FIX BROKEN WORDS:** "inform ation" -> "information".
-    5. **DETECT ANSWERS:** Look for bold, underline, red text, or asterisks (*). If unclear, default 'isCorrect' to false.
+    **CRITICAL DATA CLEANING & NORMALIZATION RULES:**
+    1. **Merge Split Lines:** If a question stem or answer is cut off (e.g., "Quest" line 1, "ion 1" line 2), merge them into one coherent line.
+    2. **Fix Missing Labels:** If answers are listed as "Cat Dog Bird Fish" or just on new lines without "A. B. C. D.", assign them labels A, B, C, D in order.
+    3. **Separate Stuck Text:** If a question and its answers are stuck together (e.g. "Question 1. HelloA. HiB. Bye"), split them intelligently.
+    4. **Detect Correct Answers:** Look for **Bold**, **Underline**, **Red Color**, or an asterisk (*). If NO explicit marker is found, default 'isCorrect' to false.
+    5. **Clean Content:** Remove excessive underscores (____) used for blanks, replacing them with a standard '_______'.
     
     **CRITICAL GROUPING RULES (for Shuffling):**
     1. **Split the exam into as many DISTINCT groups as possible**. 
@@ -763,16 +763,7 @@ YÊU CẦU:
         }
     });
 
-    // ROBUST JSON CLEANING: Remove Markdown code blocks if present
-    const rawText = response.text || "[]";
-    const cleanJson = rawText.replace(/```json|```/g, "").trim();
-    
-    try {
-        return JSON.parse(cleanJson);
-    } catch (e) {
-        console.error("JSON Parsing Error:", e);
-        throw new Error("AI trả về dữ liệu lỗi không thể đọc được. Vui lòng thử lại với file rõ ràng hơn.");
-    }
+    return JSON.parse(response.text || "[]");
   };
 
   const performOfflineShuffle = (groups: ExamGroup[]): ExamGroup[] => {
@@ -1443,7 +1434,7 @@ Hãy làm thật chi tiết và đẹp mắt.
                     <input 
                       type="file" 
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      accept=".pdf,.docx,.doc"
+                      accept=".pdf,.docx"
                       onChange={handleFileChange}
                     />
                     <div className="text-center space-y-2 pointer-events-none">
@@ -1575,39 +1566,39 @@ Hãy làm thật chi tiết và đẹp mắt.
             </div>
           )}
 
-           {/* === CONTENT FOR TAB 6: SHUFFLE === */}
-           {activeTab === 'shuffle' && (
+          {/* === CONTENT FOR TAB: SHUFFLE === */}
+          {activeTab === 'shuffle' && (
             <div className="space-y-6 animate-fade-in-up">
               {/* Step 1: Upload */}
               <div>
                 <div className="flex items-center gap-2 mb-2 text-blue-200 uppercase text-xs font-bold tracking-wider">
                   <span className="w-5 h-5 rounded-full border border-blue-300 flex items-center justify-center text-[10px]">1</span>
-                  Tải lên tài liệu
+                  Tải lên tài liệu (PDF, DOCX, DOC)
                 </div>
                 
                 <label className="block w-full cursor-pointer group">
                   <div className={`
                     relative border-2 border-dashed rounded-xl p-6 transition-all duration-300
-                    ${file ? 'border-amber-400 bg-amber-500/20' : 'border-blue-400/30 hover:border-blue-300 hover:bg-blue-800/50'}
+                    ${file ? 'border-green-400 bg-green-500/20' : 'border-blue-400/30 hover:border-blue-300 hover:bg-blue-800/50'}
                   `}>
                     <input 
                       type="file" 
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      accept=".pdf,.docx,.doc"
+                      accept=".pdf,.docx,.doc" 
                       onChange={handleFileChange}
                     />
                     <div className="text-center space-y-2 pointer-events-none">
                       {file ? (
                         <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          <p className="text-base font-medium text-amber-300 truncate px-2">{fileName}</p>
+                          <p className="text-base font-medium text-green-300 truncate px-2">{fileName}</p>
                         </>
                       ) : (
                         <>
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto text-blue-300/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m-4-4v12" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                           </svg>
                           <p className="text-base font-medium text-blue-100">Kéo thả PDF / DOCX / DOC</p>
                         </>
@@ -1664,13 +1655,19 @@ Hãy làm thật chi tiết và đẹp mắt.
                       onClick={handleStandardize}
                       disabled={isLoading || !file}
                       className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
-                        ${isLoading || !file ? 'bg-blue-950 text-blue-500 cursor-not-allowed border border-blue-800' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                        ${isLoading || !file ? 'bg-blue-950 text-blue-500 cursor-not-allowed border border-blue-800' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
                     >
-                        {isLoading && loadingStatus.includes("chuẩn hóa") ? (
-                             <span className="text-sm animate-pulse">{loadingStatus}</span>
-                        ) : (
-                             <span>Chuẩn hóa đề (AI)</span>
-                        )}
+                      {isLoading && loadingStatus.includes("chuẩn hóa") ? (
+                        <>
+                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          <span className="text-sm">Đang chuẩn hóa...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          <span>Chuẩn hóa đề (AI)</span>
+                        </>
+                      )}
                     </button>
 
                     <button
@@ -1686,8 +1683,8 @@ Hãy làm thật chi tiết và đẹp mắt.
                         </>
                       ) : (
                         <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-                          <span>Tạo Mã Đề</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                          <span>Tạo {numCopies} Mã Đề (Trộn Offline)</span>
                         </>
                       )}
                     </button>
@@ -1717,346 +1714,6 @@ Hãy làm thật chi tiết và đẹp mắt.
                 </div>
               )}
             </div>
-          )}
-
-          {/* === CONTENT FOR TAB 2: CREATE CONTENT === */}
-          {activeTab === 'create' && (
-             <div className="space-y-6 animate-fade-in-up">
-                <div>
-                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Loại bài tập:</label>
-                   <select 
-                      value={createType} onChange={(e) => setCreateType(e.target.value)}
-                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                   >
-                      {QUESTION_DATA.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                   </select>
-                </div>
-
-                {/* Sub-topic / Focus Selection */}
-                <div>
-                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Trọng tâm kiến thức:</label>
-                   <select 
-                      value={createFocus} onChange={(e) => setCreateFocus(e.target.value)}
-                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                   >
-                      {currentTypeObj?.topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                   </select>
-                </div>
-
-                <div>
-                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Mức độ:</label>
-                   <select 
-                      value={createLevel} onChange={(e) => setCreateLevel(e.target.value)}
-                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                   >
-                      {DIFFICULTY_LEVELS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                   </select>
-                </div>
-
-                <div>
-                  <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chủ đề (Tùy chọn):</label>
-                  <input 
-                    type="text" placeholder="VD: Environment, Education..." 
-                    value={createTopic} onChange={(e) => setCreateTopic(e.target.value)}
-                    className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white placeholder-blue-600 focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                   <div className="flex-1">
-                      <label className="text-sm text-blue-200 block mb-1.5 font-medium">Số bài (Texts):</label>
-                      <input 
-                        type="number" min="1" 
-                        value={quantityPassages} onChange={(e) => setQuantityPassages(parseInt(e.target.value) || 1)}
-                        className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:border-blue-500"
-                      />
-                   </div>
-                   <div className="flex-1">
-                      <label className="text-sm text-blue-200 block mb-1.5 font-medium">Số câu/bài:</label>
-                      <input 
-                        type="number" min="1" max="15" 
-                        value={questionsPerPassage} onChange={(e) => setQuestionsPerPassage(parseInt(e.target.value) || 5)}
-                        className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:border-blue-500"
-                      />
-                   </div>
-                </div>
-
-                <div className="space-y-3">
-                  <button
-                    onClick={handleCreateContent}
-                    disabled={isLoading}
-                    className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
-                      ${isLoading ? 'bg-blue-950 text-blue-500 border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
-                  >
-                    {isLoading ? (
-                      <>
-                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                          <span className="text-sm">{loadingStatus || "Đang xử lý..."}</span>
-                      </>
-                    ) : (
-                      <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                          <span>Soạn Thảo Ngay</span>
-                      </>
-                    )}
-                  </button>
-                  
-                  <button
-                    onClick={handleGenerateSolution}
-                    disabled={isLoading}
-                    className="w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                     <span>Tạo Hướng Dẫn Giải</span>
-                  </button>
-                </div>
-             </div>
-          )}
-
-          {/* === CONTENT FOR TAB 3: VOCABULARY TOPICS === */}
-          {activeTab === 'vocab' && (
-             <div className="space-y-6 animate-fade-in-up">
-                <div>
-                   <label className="text-sm text-blue-200 block mb-2 font-medium">Chế độ chọn:</label>
-                   <div className="flex gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer bg-blue-950/50 p-2 rounded-lg border border-blue-800 flex-1 justify-center hover:bg-blue-900 transition">
-                         <input type="radio" checked={vocabMode === 'single'} onChange={() => setVocabMode('single')} className="text-blue-600 focus:ring-blue-500" />
-                         <span className="text-white text-sm font-medium">Chủ đề đơn</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer bg-blue-950/50 p-2 rounded-lg border border-blue-800 flex-1 justify-center hover:bg-blue-900 transition">
-                         <input type="radio" checked={vocabMode === 'mix'} onChange={() => setVocabMode('mix')} className="text-blue-600 focus:ring-blue-500" />
-                         <span className="text-white text-sm font-medium">Trộn chủ đề</span>
-                      </label>
-                   </div>
-                </div>
-
-                {vocabMode === 'single' ? (
-                   <div>
-                      <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chọn Chủ đề:</label>
-                      <select 
-                         value={selectedVocabTopic} onChange={(e) => setSelectedVocabTopic(e.target.value)}
-                         className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                      >
-                         {VOCAB_TOPICS.map((topic, idx) => <option key={idx} value={topic}>{topic}</option>)}
-                      </select>
-                   </div>
-                ) : (
-                   <div>
-                      <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chọn các chủ đề muốn trộn:</label>
-                      <div className="w-full bg-blue-950 border border-blue-700 rounded-lg p-2 max-h-48 overflow-y-auto custom-scrollbar">
-                         {VOCAB_TOPICS.map((topic, idx) => (
-                            <label key={idx} className="flex items-center gap-2 p-1.5 hover:bg-blue-900 rounded cursor-pointer">
-                               <input 
-                                  type="checkbox" 
-                                  checked={selectedMixTopics.includes(topic)}
-                                  onChange={() => handleMixTopicToggle(topic)}
-                                  className="rounded border-blue-500 text-blue-600 bg-blue-900 focus:ring-0"
-                               />
-                               <span className="text-sm text-blue-100">{topic}</span>
-                            </label>
-                         ))}
-                      </div>
-                      <p className="text-xs text-blue-300 mt-1">Đã chọn: {selectedMixTopics.length} chủ đề</p>
-                   </div>
-                )}
-
-                <div>
-                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Mức độ:</label>
-                   <select 
-                      value={vocabLevel} onChange={(e) => setVocabLevel(e.target.value)}
-                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                   >
-                      {DIFFICULTY_LEVELS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                   </select>
-                </div>
-
-                <div>
-                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Số lượng câu hỏi:</label>
-                   <input 
-                     type="number" min="5" max="100"
-                     value={vocabQuestionCount} onChange={(e) => setVocabQuestionCount(parseInt(e.target.value) || 10)}
-                     className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:border-blue-500"
-                   />
-                </div>
-
-                <div className="space-y-3">
-                  <button
-                    onClick={handleCreateVocab}
-                    disabled={isLoading}
-                    className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
-                      ${isLoading ? 'bg-blue-950 text-blue-500 border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
-                  >
-                    {isLoading ? (
-                      <>
-                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                          <span className="text-sm">{loadingStatus || "Đang tạo câu hỏi..."}</span>
-                      </>
-                    ) : (
-                      <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-                          <span>Tạo Câu Hỏi</span>
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={handleGenerateSolution}
-                    disabled={isLoading}
-                    className="w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                     <span>Tạo Hướng Dẫn Giải</span>
-                  </button>
-                </div>
-             </div>
-          )}
-
-          {/* === CONTENT FOR TAB 4: GRAMMAR === */}
-          {activeTab === 'grammar' && (
-             <div className="space-y-6 animate-fade-in-up">
-                
-                <div>
-                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chuyên đề Ngữ pháp:</label>
-                   <select 
-                      value={selectedGrammarTopic} onChange={(e) => setSelectedGrammarTopic(e.target.value)}
-                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                   >
-                      {GRAMMAR_TOPICS.map((topic, idx) => <option key={idx} value={topic}>{topic}</option>)}
-                   </select>
-                </div>
-
-                <div>
-                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Mức độ:</label>
-                   <select 
-                      value={grammarLevel} onChange={(e) => setGrammarLevel(e.target.value)}
-                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                   >
-                      {DIFFICULTY_LEVELS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                   </select>
-                </div>
-
-                <div>
-                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Số lượng câu hỏi:</label>
-                   <input 
-                     type="number" min="5" max="100"
-                     value={grammarQuestionCount} onChange={(e) => setGrammarQuestionCount(parseInt(e.target.value) || 10)}
-                     className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:border-blue-500"
-                   />
-                </div>
-
-                <div className="space-y-3">
-                  <button
-                    onClick={handleCreateGrammar}
-                    disabled={isLoading}
-                    className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
-                      ${isLoading ? 'bg-blue-950 text-blue-500 border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
-                  >
-                    {isLoading ? (
-                      <>
-                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                          <span className="text-sm">{loadingStatus || "Đang tạo câu hỏi..."}</span>
-                      </>
-                    ) : (
-                      <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                          <span>Tạo Câu Hỏi Ngữ Pháp</span>
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={handleGenerateSolution}
-                    disabled={isLoading}
-                    className="w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                     <span>Tạo Hướng Dẫn Giải</span>
-                  </button>
-                </div>
-             </div>
-          )}
-
-          {/* === CONTENT FOR TAB 5: NEWSLETTER (NEW) === */}
-          {activeTab === 'newsletter' && (
-             <div className="space-y-6 animate-fade-in-up">
-                
-                <div>
-                   <label className="text-sm text-blue-200 block mb-2 font-medium">Chọn nguồn đầu vào:</label>
-                   <div className="flex flex-col gap-2">
-                      <label className="flex items-center gap-3 cursor-pointer bg-blue-950/50 p-2.5 rounded-lg border border-blue-800 hover:bg-blue-900 transition">
-                         <input type="radio" checked={newsletterMode === 'topic'} onChange={() => setNewsletterMode('topic')} className="text-blue-600 focus:ring-blue-500" />
-                         <div>
-                            <span className="text-white text-sm font-bold block">Chủ đề (Topic)</span>
-                            <span className="text-blue-300 text-xs">AI tự viết nội dung mới</span>
-                         </div>
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer bg-blue-950/50 p-2.5 rounded-lg border border-blue-800 hover:bg-blue-900 transition">
-                         <input type="radio" checked={newsletterMode === 'url'} onChange={() => setNewsletterMode('url')} className="text-blue-600 focus:ring-blue-500" />
-                         <div>
-                            <span className="text-white text-sm font-bold block">Link bài báo (URL)</span>
-                            <span className="text-blue-300 text-xs">AI đọc và tóm tắt lại</span>
-                         </div>
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer bg-blue-950/50 p-2.5 rounded-lg border border-blue-800 hover:bg-blue-900 transition">
-                         <input type="radio" checked={newsletterMode === 'text'} onChange={() => setNewsletterMode('text')} className="text-blue-600 focus:ring-blue-500" />
-                         <div>
-                            <span className="text-white text-sm font-bold block">Văn bản thô (Raw Text)</span>
-                            <span className="text-blue-300 text-xs">Dán nội dung có sẵn</span>
-                         </div>
-                      </label>
-                   </div>
-                </div>
-
-                <div>
-                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">
-                      {newsletterMode === 'topic' ? 'Nhập chủ đề:' : (newsletterMode === 'url' ? 'Dán đường link (URL):' : 'Dán văn bản gốc:')}
-                   </label>
-                   {newsletterMode === 'text' ? (
-                       <textarea 
-                          value={newsletterInput} onChange={(e) => setNewsletterInput(e.target.value)}
-                          placeholder="Paste text here..."
-                          className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white placeholder-blue-600 focus:border-blue-500 h-32 custom-scrollbar"
-                       />
-                   ) : (
-                       <input 
-                         type="text" 
-                         value={newsletterInput} onChange={(e) => setNewsletterInput(e.target.value)}
-                         placeholder={newsletterMode === 'topic' ? "VD: Artificial Intelligence in Education" : "https://..."}
-                         className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white placeholder-blue-600 focus:border-blue-500"
-                       />
-                   )}
-                </div>
-
-                <div className="bg-blue-800/30 p-3 rounded-lg border border-blue-700/50 text-xs text-blue-200">
-                    <p className="font-bold mb-1 text-blue-100">Cấu trúc Bản tin (4 trang):</p>
-                    <ul className="list-disc pl-4 space-y-1">
-                        <li>Bài báo song ngữ (Anh-Việt) chi tiết.</li>
-                        <li>50 từ vựng trọng tâm (Bảng).</li>
-                        <li>Phân loại cấp độ B1-B2-C1.</li>
-                    </ul>
-                </div>
-
-                <div className="space-y-3">
-                  <button
-                    onClick={handleCreateNewsletter}
-                    disabled={isLoading}
-                    className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
-                      ${isLoading ? 'bg-blue-950 text-blue-500 border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
-                  >
-                    {isLoading ? (
-                      <>
-                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                          <span className="text-sm">{loadingStatus || "Đang viết bản tin..."}</span>
-                      </>
-                    ) : (
-                      <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>
-                          <span>Tạo Bản Tin</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-             </div>
           )}
 
           {/* === CONTENT FOR TAB 6: SETTINGS (NEW) === */}
@@ -2146,9 +1803,9 @@ Hãy làm thật chi tiết và đẹp mắt.
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            {activeTab === 'upload' || activeTab === 'shuffle'
+            {activeTab === 'upload' 
                ? (activeVariant ? `Xem trước: ${activeVariant.name}` : 'Xem trước đề thi') 
-               : (activeTab === 'vocab' ? 'Câu hỏi Chủ đề (Vocabulary)' : (activeTab === 'grammar' ? 'Câu hỏi Ngữ pháp' : (activeTab === 'newsletter' ? 'Bản Tin Song Ngữ' : (activeTab === 'settings' ? 'Thông tin & Cài đặt' : 'Nội dung biên soạn'))))}
+               : (activeTab === 'vocab' ? 'Câu hỏi Chủ đề (Vocabulary)' : (activeTab === 'grammar' ? 'Câu hỏi Ngữ pháp' : (activeTab === 'newsletter' ? 'Bản Tin Song Ngữ' : (activeTab === 'settings' ? 'Thông tin & Cài đặt' : (activeTab === 'shuffle' ? (activeVariant ? `Xem: ${activeVariant.name}` : 'Trộn Đề Thi Offline') : 'Nội dung biên soạn')))))}
           </h2>
           
           <div className="flex gap-2">
@@ -2213,7 +1870,7 @@ Hãy làm thật chi tiết và đẹp mắt.
                 .badge-c1 { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
               `}</style>
 
-           {/* VIEW FOR TAB 1 & 6 (UPLOAD & SHUFFLE) */}
+           {/* VIEW FOR TAB 1 & SHUFFLE */}
            {(activeTab === 'upload' || activeTab === 'shuffle') && (
               activeVariant ? (
                 <div className="generated-content-wrapper w-full bg-white min-h-screen p-10 shadow-xl animate-fade-in-up">
@@ -2224,7 +1881,9 @@ Hãy làm thật chi tiết và đẹp mắt.
                   <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                   </div>
-                  <p className="text-xl font-medium text-slate-400">Chưa có đề thi nào</p>
+                  <p className="text-xl font-medium text-slate-400">
+                      {activeTab === 'upload' ? 'Chưa có đề thi nào' : 'Tải file và bấm Chuẩn hóa/Tạo đề'}
+                  </p>
                 </div>
               )
            )}
