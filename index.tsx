@@ -166,6 +166,7 @@ const App = () => {
   const [useCustomCodes, setUseCustomCodes] = useState<boolean>(false);
   const [customCodesRaw, setCustomCodesRaw] = useState<string>("");
   const [fileName, setFileName] = useState<string>("");
+  const [parsedExamData, setParsedExamData] = useState<ExamGroup[] | null>(null); // Cached parsed data
 
   // --- TAB 2 STATE: CONTENT CREATION ---
   const [createType, setCreateType] = useState<string>(QUESTION_DATA[0].id);
@@ -378,6 +379,7 @@ NHIỆM VỤ:
       setError(null);
       setGeneratedVariants([]);
       setSelectedVariantId(null);
+      setParsedExamData(null); // Reset parsed data on new file
     }
   };
 
@@ -692,21 +694,23 @@ YÊU CẦU:
     }
 
     const prompt = `
-    Analyze this English exam and extract the structure into JSON.
+    You are an expert English Exam REPAIR ENGINE and Formatter.
+    Your goal is to normalize a raw exam file into a perfect structured JSON.
+    The input file likely has BAD FORMATTING, MISSING LABELS, or MERGED TEXT.
+
+    **CRITICAL REPAIR RULES (YOU MUST FIX THE DATA):**
+    1. **REPAIR SPLIT LINES:** If "Quest" is on line 1 and "ion 1" on line 2, join them.
+    2. **INFER ANSWER LABELS:** If answers are listed like "apple banana cat dog" without A/B/C/D, assign them A, B, C, D automatically. If only 3 answers exist, assign A, B, C.
+    3. **SEPARATE STUCK TEXT:** "Question 1.HelloA.Hi" -> Q: "Hello", A: "Hi".
+    4. **FIX BROKEN WORDS:** "inform ation" -> "information".
+    5. **DETECT ANSWERS:** Look for bold, underline, red text, or asterisks (*). If unclear, default 'isCorrect' to false.
     
-    CRITICAL GROUPING RULES (for Shuffling):
+    **CRITICAL GROUPING RULES (for Shuffling):**
     1. **Split the exam into as many DISTINCT groups as possible**. 
     2. Each **Reading Passage** and its questions MUST be a separate 'READING_COMPREHENSION' group.
     3. Each **Cloze Test** (passage with gaps) MUST be a separate 'CLOZE_TEST' group.
-    4. For **MISC** questions (Grammar, Phonetics, Exchange), if they have different instructions (e.g. "Mark the word whose underlined part...", "Mark the correct answer..."), SPLIT them into separate 'MISC' groups. Do not lump all discrete questions into one huge group.
+    4. For **MISC** questions (Grammar, Phonetics, Exchange), if they have different instructions (e.g. "Mark the word whose underlined part...", "Mark the correct answer..."), SPLIT them into separate 'MISC' groups.
     
-    EXTRACTION RULES:
-    1. Extract 'passageContent' (HTML) for Reading/Cloze.
-    2. Extract questions. 'content' should be the question text (HTML). **IMPORTANT: REMOVE the "Question X" or numbering prefix from content.**
-    3. Extract answers. **IMPORTANT: REMOVE the label "A.", "B.", "C.", "D." from the answer text.**
-    4. **DETECT CORRECT ANSWER**: Look for answers that are **bolded**, **underlined**, or colored red in the input. Set 'isCorrect': true for them. If no format indicates correct, defaults to false.
-    5. 'originalNumber': integer.
-
     Output schema:
     [
       {
@@ -714,7 +718,7 @@ YÊU CẦU:
         "title": "Instruction text (e.g. 'Read the passage...', 'Mark the letter A, B, C, D...')",
         "passageContent": "HTML string or empty",
         "questions": [
-           { "originalNumber": 1, "content": "HTML string", "answers": [{ "text": "string", "isCorrect": boolean }] }
+           { "originalNumber": 1, "content": "HTML string (NO 'Question X' prefix)", "answers": [{ "text": "string (NO 'A.' prefix)", "isCorrect": boolean }] }
         ]
       }
     ]
@@ -759,7 +763,16 @@ YÊU CẦU:
         }
     });
 
-    return JSON.parse(response.text || "[]");
+    // ROBUST JSON CLEANING: Remove Markdown code blocks if present
+    const rawText = response.text || "[]";
+    const cleanJson = rawText.replace(/```json|```/g, "").trim();
+    
+    try {
+        return JSON.parse(cleanJson);
+    } catch (e) {
+        console.error("JSON Parsing Error:", e);
+        throw new Error("AI trả về dữ liệu lỗi không thể đọc được. Vui lòng thử lại với file rõ ràng hơn.");
+    }
   };
 
   const performOfflineShuffle = (groups: ExamGroup[]): ExamGroup[] => {
@@ -922,6 +935,43 @@ YÊU CẦU:
       return { html, keyHtml: keyTable };
   };
 
+  const handleStandardize = async () => {
+    if (!file) return setError("Vui lòng chọn file.");
+    setIsLoading(true); setError(null);
+    setLoadingStatus("Đang chuẩn hóa và phân tích cấu trúc đề...");
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: getApiKey() });
+        // Use gemini-2.5-flash for speed and context
+        const structure = await parseExamStructure(ai, "gemini-2.5-flash", file);
+        
+        if (!structure || structure.length === 0) {
+            throw new Error("Không nhận diện được câu hỏi nào. Vui lòng kiểm tra file.");
+        }
+
+        setParsedExamData(structure);
+
+        // Generate a preview of the "Normalized" exam (No shuffle yet)
+        const { html, keyHtml } = renderShuffledToHtml(structure, "BẢN GỐC");
+        
+        const preview: TestVariant = {
+            id: "normalized-preview",
+            name: "Bản Chuẩn Hóa (Gốc)",
+            htmlContent: html + keyHtml,
+            answerKeyHtml: keyHtml
+        };
+
+        setGeneratedVariants([preview]);
+        setSelectedVariantId("normalized-preview");
+        setLoadingStatus("Đã chuẩn hóa xong. Hãy kiểm tra bên phải, sau đó bấm 'Tạo Mã Đề'.");
+
+    } catch (err: any) {
+        setError("Lỗi chuẩn hóa: " + err.message);
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
   const handleShuffleTests = async () => {
     if (!file) return setError("Vui lòng chọn file.");
     
@@ -935,16 +985,21 @@ YÊU CẦU:
        for(let i = 0; i < numCopies; i++) codesToGenerate.push(Math.floor(100 + Math.random() * 900).toString());
     }
 
-    setIsLoading(true); setError(null); setGeneratedVariants([]);
-    setLoadingStatus("Đang phân tích cấu trúc đề thi bằng AI...");
-
+    setIsLoading(true); setError(null);
+    // Don't clear variants immediately if we are viewing the standardized preview
+    // setGeneratedVariants([]); 
+    
     try {
-        const ai = new GoogleGenAI({ apiKey: getApiKey() });
-        const modelId = "gemini-2.5-flash"; 
+        let structure = parsedExamData;
 
-        // 2. Parse Structure (AI)
-        const structure = await parseExamStructure(ai, modelId, file);
-        if (!structure || structure.length === 0) throw new Error("Không nhận diện được câu hỏi nào.");
+        // 2. Parse Structure (AI) if not already done
+        if (!structure) {
+            setLoadingStatus("Đang phân tích cấu trúc đề thi (Tự động chuẩn hóa)...");
+            const ai = new GoogleGenAI({ apiKey: getApiKey() });
+            structure = await parseExamStructure(ai, "gemini-2.5-flash", file);
+            if (!structure || structure.length === 0) throw new Error("Không nhận diện được câu hỏi.");
+            setParsedExamData(structure); // Save for future use
+        }
 
         // 3. Loop Codes -> Offline Shuffle -> Render
         let completed = 0;
@@ -1388,7 +1443,7 @@ Hãy làm thật chi tiết và đẹp mắt.
                     <input 
                       type="file" 
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      accept=".pdf,.docx"
+                      accept=".pdf,.docx,.doc"
                       onChange={handleFileChange}
                     />
                     <div className="text-center space-y-2 pointer-events-none">
@@ -1520,39 +1575,39 @@ Hãy làm thật chi tiết và đẹp mắt.
             </div>
           )}
 
-          {/* === CONTENT FOR TAB: SHUFFLE === */}
-          {activeTab === 'shuffle' && (
+           {/* === CONTENT FOR TAB 6: SHUFFLE === */}
+           {activeTab === 'shuffle' && (
             <div className="space-y-6 animate-fade-in-up">
               {/* Step 1: Upload */}
               <div>
                 <div className="flex items-center gap-2 mb-2 text-blue-200 uppercase text-xs font-bold tracking-wider">
                   <span className="w-5 h-5 rounded-full border border-blue-300 flex items-center justify-center text-[10px]">1</span>
-                  Tải lên tài liệu (PDF, DOCX, DOC)
+                  Tải lên tài liệu
                 </div>
                 
                 <label className="block w-full cursor-pointer group">
                   <div className={`
                     relative border-2 border-dashed rounded-xl p-6 transition-all duration-300
-                    ${file ? 'border-green-400 bg-green-500/20' : 'border-blue-400/30 hover:border-blue-300 hover:bg-blue-800/50'}
+                    ${file ? 'border-amber-400 bg-amber-500/20' : 'border-blue-400/30 hover:border-blue-300 hover:bg-blue-800/50'}
                   `}>
                     <input 
                       type="file" 
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      accept=".pdf,.docx,.doc" 
+                      accept=".pdf,.docx,.doc"
                       onChange={handleFileChange}
                     />
                     <div className="text-center space-y-2 pointer-events-none">
                       {file ? (
                         <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          <p className="text-base font-medium text-green-300 truncate px-2">{fileName}</p>
+                          <p className="text-base font-medium text-amber-300 truncate px-2">{fileName}</p>
                         </>
                       ) : (
                         <>
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto text-blue-300/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m-4-4v12" />
                           </svg>
                           <p className="text-base font-medium text-blue-100">Kéo thả PDF / DOCX / DOC</p>
                         </>
@@ -1606,20 +1661,33 @@ Hãy làm thật chi tiết và đẹp mắt.
                 
                 <div className="space-y-3">
                     <button
+                      onClick={handleStandardize}
+                      disabled={isLoading || !file}
+                      className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
+                        ${isLoading || !file ? 'bg-blue-950 text-blue-500 cursor-not-allowed border border-blue-800' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                    >
+                        {isLoading && loadingStatus.includes("chuẩn hóa") ? (
+                             <span className="text-sm animate-pulse">{loadingStatus}</span>
+                        ) : (
+                             <span>Chuẩn hóa đề (AI)</span>
+                        )}
+                    </button>
+
+                    <button
                       onClick={handleShuffleTests}
                       disabled={isLoading || !file || (useCustomCodes && numCopies === 0)}
                       className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
                         ${isLoading || !file ? 'bg-blue-950 text-blue-500 cursor-not-allowed border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
                     >
-                      {isLoading ? (
+                      {isLoading && !loadingStatus.includes("chuẩn hóa") ? (
                         <>
                           <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                           <span className="text-sm">{loadingStatus}</span>
                         </>
                       ) : (
                         <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                          <span>Tạo {numCopies} Mã Đề (Trộn Offline)</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                          <span>Tạo Mã Đề</span>
                         </>
                       )}
                     </button>
@@ -2145,7 +2213,7 @@ Hãy làm thật chi tiết và đẹp mắt.
                 .badge-c1 { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
               `}</style>
 
-           {/* VIEW FOR TAB 1 & TAB SHUFFLE */}
+           {/* VIEW FOR TAB 1 & 6 (UPLOAD & SHUFFLE) */}
            {(activeTab === 'upload' || activeTab === 'shuffle') && (
               activeVariant ? (
                 <div className="generated-content-wrapper w-full bg-white min-h-screen p-10 shadow-xl animate-fade-in-up">
