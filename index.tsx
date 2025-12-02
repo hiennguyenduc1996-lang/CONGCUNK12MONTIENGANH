@@ -525,7 +525,7 @@ QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
       // Concurrency limit: 4 requests at a time (Speed up)
       const CONCURRENCY_LIMIT = 4;
       
-      setLoadingStatus(`Đang khởi tạo ${total} mã đề (Chế độ tăng tốc)...`);
+      setLoadingStatus(`Đang khởi tạo ${total} mã đề...`);
 
       // Worker function to process a single code
       const processCode = async (code: string) => {
