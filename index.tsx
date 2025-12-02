@@ -447,7 +447,7 @@ QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
 3. **QUAN TRỌNG: CÁC CÂU LỆNH (INSTRUCTIONS) & HEADERS**:
    - **PHẢI GIỮ LẠI** các câu lệnh hướng dẫn làm bài gốc. 
    - Ví dụ: "Mark the letter A, B, C, or D on your answer sheet...", "Read the following advertisement...", "Read the following passage...".
-   - Đặt các câu lệnh này ngay trước nhóm câu hỏi tương ứng, đánh lại số trong các lệnh hướng dẫn phù hợp với thứ tự nhóm câu hỏi. KHÔNG ĐƯỢC XÓA.
+   - Đặt các câu lệnh này ngay trước nhóm câu hỏi tương ứng. KHÔNG ĐƯỢC XÓA.
 
 4. **ĐÁNH SỐ & SỬA ĐỔI (RENUMBER & MODIFY) - [CỰC KỲ QUAN TRỌNG]**:
    - Đánh số lại toàn bộ câu hỏi từ 1 đến 40.
@@ -799,8 +799,34 @@ YÊU CẦU:
       const keyData: {num: number, ans: string}[] = [];
 
       groups.forEach(group => {
+          // Update Instruction Title with new Question Numbers
+          let processedTitle = group.title || "";
+          if (processedTitle && group.questions.length > 0) {
+              const startNum = globalQNum;
+              const endNum = globalQNum + group.questions.length - 1;
+              
+              // Replace "Questions 1-5", "questions from 1 to 5", "Câu 1-5"
+              // Matches: (prefix)(num1)(separator)(num2)
+              // FIX: Regex separator must handle 'to' and 'đến' as words, not chars in []
+              processedTitle = processedTitle.replace(/(\b(?:Questions?|Câu|from|từ)\s+)(\d+)(\s*(?:[-–—]|to|đến)\s*)(\d+)/gi, (match, prefix, n1, sep, n2) => {
+                  // Safety check: only replace if numbers are likely question numbers (e.g., < 200)
+                  if (parseInt(n1) < 200 && parseInt(n2) < 200) {
+                      return `${prefix}${startNum}${sep}${endNum}`;
+                  }
+                  return match;
+              });
+
+              // Replace "Question 1" (singular) if group has only 1 question
+              if (group.questions.length === 1) {
+                   processedTitle = processedTitle.replace(/(\b(?:Question|Câu)\s+)(\d+)(?!\d)/gi, (match, prefix, n1) => {
+                      if (parseInt(n1) < 200) return `${prefix}${startNum}`;
+                      return match;
+                   });
+              }
+          }
+
           html += `<div class="group-section mb-6" style="margin-bottom:25px; break-inside: avoid-page;">`;
-          if (group.title) html += `<p style="font-weight:bold; font-style:italic; margin-bottom:10px;">${group.title}</p>`;
+          if (processedTitle) html += `<p style="font-weight:bold; font-style:italic; margin-bottom:10px;">${processedTitle}</p>`;
           
           let passageHtml = group.passageContent || "";
           
