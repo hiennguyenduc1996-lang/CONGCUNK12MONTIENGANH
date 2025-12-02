@@ -424,7 +424,12 @@ QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
      + Xáo trộn thứ tự đáp án A, B, C, D.
    - **Xáo trộn vị trí các Bài tập lớn**: Ví dụ bài Đục lỗ có thể chuyển từ cuối đề lên đầu đề.
 
-3. **ĐÁNH SỐ & SỬA ĐỔI (RENUMBER & MODIFY) - [CỰC KỲ QUAN TRỌNG]**:
+3. **QUAN TRỌNG: CÁC CÂU LỆNH (INSTRUCTIONS) & HEADERS**:
+   - **PHẢI GIỮ LẠI** các câu lệnh hướng dẫn làm bài gốc. 
+   - Ví dụ: "Mark the letter A, B, C, or D on your answer sheet...", "Read the following advertisement...", "Read the following passage...".
+   - Đặt các câu lệnh này ngay trước nhóm câu hỏi tương ứng. KHÔNG ĐƯỢC XÓA.
+
+4. **ĐÁNH SỐ & SỬA ĐỔI (RENUMBER & MODIFY) - [CỰC KỲ QUAN TRỌNG]**:
    - Đánh số lại toàn bộ câu hỏi từ 1 đến 40.
    - **VỚI BÀI ĐỤC LỖ (CLOZE TEST)**:
      + Khi vị trí bài thay đổi (ví dụ từ câu 35-40 thành câu 1-5), số thứ tự câu hỏi thay đổi.
@@ -432,21 +437,21 @@ QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
      + Ví dụ: Tìm số cũ "(35)", "35", "[35]" trong văn bản và sửa thành "(1)" hoặc "(1)_______".
      + Đảm bảo đoạn văn chứa các chỗ trống có số thứ tự khớp hoàn toàn với các câu hỏi bên dưới.
 
-4. **ĐỊNH DẠNG (FORMATTING)**:
+5. **ĐỊNH DẠNG (FORMATTING)**:
    - Giữ nguyên định dạng gốc: **in đậm (<b>)**, *in nghiêng (<i>)*, <u>gạch chân</u>.
    - **KHÔNG DÙNG MARKDOWN** (như **bold**). Dùng thẻ HTML <b>bold</b>.
    - Đáp án: In đậm ký tự đầu: <b>A.</b>, <b>B.</b>, <b>C.</b>, <b>D.</b> (Ví dụ: <b>A.</b> Apple).
    - Mỗi đáp án một dòng: <div class="ans-opt"><b>A.</b> ...</div>.
    - Không dùng list tự động (<ol>). Dùng thủ công: <b>Question 1.</b>
 
-5. **ĐÁP ÁN (ANSWER KEY)**:
+6. **ĐÁP ÁN (ANSWER KEY)**:
    - Tạo bảng HTML (<table>) có viền (border="1") ở cuối cùng.
    - Kích thước: 4 hàng, 10 cột.
    - Nội dung: "1.A", "2.B"...
    - Tiêu đề: <h3>Answer Key - Code: ${testCode}</h3>
 `;
 
-    const userPrompt = `Tạo mã đề ${testCode}. Chọn 40 câu. Yêu cầu: Reading (Xáo câu/opt), Cloze (Giữ câu/Xáo opt/SỬA SỐ TRONG BÀI THÀNH (X)_______), Khác (Xáo câu/opt). In đậm A.B.C.D. Không dùng Markdown.`;
+    const userPrompt = `Tạo mã đề ${testCode}. Chọn 40 câu. Giữ lại instructions (Mark the letter...). Reading (Xáo câu/opt), Cloze (Giữ câu/Xáo opt/SỬA SỐ TRONG BÀI THÀNH (X)_______), Khác (Xáo câu/opt). In đậm A.B.C.D.`;
 
     const safetySettings = [
         { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -462,6 +467,7 @@ QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
       config: { 
           systemInstruction, 
           temperature: 0.95,
+          seed: seed, // Use random seed to ensure variety
           safetySettings: safetySettings
       }
     });
@@ -511,12 +517,18 @@ QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
         contentPart = { text: `SOURCE CONTENT:\n${extractedHtml.substring(0, 800000)}` };
       }
 
-      // 2. Sequential Processing Loop
+      // 2. Parallel Processing with Concurrency Limit
       let successCount = 0;
-      for (let i = 0; i < codesToGenerate.length; i++) {
-         const code = codesToGenerate[i];
-         setLoadingStatus(`Đang tạo đề ${i + 1}/${codesToGenerate.length} (Mã đề: ${code})...`);
-         
+      let completedCount = 0;
+      const total = codesToGenerate.length;
+      
+      // Concurrency limit: 4 requests at a time (Speed up)
+      const CONCURRENCY_LIMIT = 4;
+      
+      setLoadingStatus(`Đang khởi tạo ${total} mã đề (Chế độ tăng tốc)...`);
+
+      // Worker function to process a single code
+      const processCode = async (code: string) => {
          try {
              const variant = await generateSingleTest(ai, modelId, contentPart, code);
              setGeneratedVariants(prev => {
@@ -528,11 +540,25 @@ QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
              successCount++;
          } catch (e: any) {
              console.error(`Lỗi tạo mã đề ${code}:`, e);
-             setError(`Lỗi tạo mã đề ${code}: ${e.message}`);
-             // Continue to next code
+             setError(prev => prev ? `${prev} | ${code}: Lỗi` : `Lỗi tạo mã đề ${code}: ${e.message}`);
+         } finally {
+             completedCount++;
+             setLoadingStatus(`Đang xử lý: ${completedCount}/${total} đề hoàn tất...`);
          }
-      }
+      };
 
+      // Queue system
+      const queue = [...codesToGenerate];
+      const workers = Array(Math.min(queue.length, CONCURRENCY_LIMIT)).fill(null).map(async () => {
+          while (queue.length > 0) {
+              const code = queue.shift();
+              if (code) await processCode(code);
+          }
+      });
+
+      await Promise.all(workers);
+
+      // Finish
       if (successCount === 0) {
           setError("Không thể tạo được đề nào. Vui lòng thử lại hoặc kiểm tra file.");
       } else if (successCount < codesToGenerate.length) {
