@@ -447,7 +447,7 @@ QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
 3. **QUAN TRỌNG: CÁC CÂU LỆNH (INSTRUCTIONS) & HEADERS**:
    - **PHẢI GIỮ LẠI** các câu lệnh hướng dẫn làm bài gốc. 
    - Ví dụ: "Mark the letter A, B, C, or D on your answer sheet...", "Read the following advertisement...", "Read the following passage...".
-   - Đặt các câu lệnh này ngay trước nhóm câu hỏi tương ứng. KHÔNG ĐƯỢC XÓA.
+   - Đặt các câu lệnh này ngay trước nhóm câu hỏi tương ứng, đánh lại số trong các lệnh hướng dẫn phù hợp với thứ tự nhóm câu hỏi. KHÔNG ĐƯỢC XÓA.
 
 4. **ĐÁNH SỐ & SỬA ĐỔI (RENUMBER & MODIFY) - [CỰC KỲ QUAN TRỌNG]**:
    - Đánh số lại toàn bộ câu hỏi từ 1 đến 40.
@@ -693,22 +693,25 @@ YÊU CẦU:
 
     const prompt = `
     Analyze this English exam and extract the structure into JSON.
-    Rules:
-    1. Group questions into: 
-       - 'READING_COMPREHENSION' (Group has a reading passage).
-       - 'CLOZE_TEST' (Group has a passage with numbered gaps like (1), (2)...).
-       - 'MISC' (Discrete questions: Grammar, Phonetics, etc.).
-    2. Extract 'passageContent' (HTML) for Reading/Cloze.
-    3. Extract questions. 'content' should be the question text (HTML). **IMPORTANT: REMOVE the "Question X" or numbering prefix from content.**
-    4. Extract answers. **IMPORTANT: REMOVE the label "A.", "B.", "C.", "D." from the answer text.**
-    5. **DETECT CORRECT ANSWER**: Look for answers that are **bolded**, **underlined**, or colored red in the input. Set 'isCorrect': true for them. If no format indicates correct, defaults to false.
-    6. 'originalNumber': integer.
+    
+    CRITICAL GROUPING RULES (for Shuffling):
+    1. **Split the exam into as many DISTINCT groups as possible**. 
+    2. Each **Reading Passage** and its questions MUST be a separate 'READING_COMPREHENSION' group.
+    3. Each **Cloze Test** (passage with gaps) MUST be a separate 'CLOZE_TEST' group.
+    4. For **MISC** questions (Grammar, Phonetics, Exchange), if they have different instructions (e.g. "Mark the word whose underlined part...", "Mark the correct answer..."), SPLIT them into separate 'MISC' groups. Do not lump all discrete questions into one huge group.
+    
+    EXTRACTION RULES:
+    1. Extract 'passageContent' (HTML) for Reading/Cloze.
+    2. Extract questions. 'content' should be the question text (HTML). **IMPORTANT: REMOVE the "Question X" or numbering prefix from content.**
+    3. Extract answers. **IMPORTANT: REMOVE the label "A.", "B.", "C.", "D." from the answer text.**
+    4. **DETECT CORRECT ANSWER**: Look for answers that are **bolded**, **underlined**, or colored red in the input. Set 'isCorrect': true for them. If no format indicates correct, defaults to false.
+    5. 'originalNumber': integer.
 
     Output schema:
     [
       {
         "type": "READING_COMPREHENSION" | "CLOZE_TEST" | "MISC",
-        "title": "Instruction text",
+        "title": "Instruction text (e.g. 'Read the passage...', 'Mark the letter A, B, C, D...')",
         "passageContent": "HTML string or empty",
         "questions": [
            { "originalNumber": 1, "content": "HTML string", "answers": [{ "text": "string", "isCorrect": boolean }] }
@@ -796,7 +799,7 @@ YÊU CẦU:
       const keyData: {num: number, ans: string}[] = [];
 
       groups.forEach(group => {
-          html += `<div class="group-section mb-6" style="margin-bottom:25px;">`;
+          html += `<div class="group-section mb-6" style="margin-bottom:25px; break-inside: avoid-page;">`;
           if (group.title) html += `<p style="font-weight:bold; font-style:italic; margin-bottom:10px;">${group.title}</p>`;
           
           let passageHtml = group.passageContent || "";
@@ -822,7 +825,7 @@ YÊU CẦU:
               // Replace with <br/><b>a.</b> ...
               cleanContent = cleanContent.replace(/(^|\s|<br\/?>)([a-e])\s*[-–\.]\s+/gi, '$1<br/><b>$2.</b> ');
 
-              questionsHtml += `<div class="question-block" style="margin-bottom:15px;">`;
+              questionsHtml += `<div class="question-block" style="margin-bottom:15px; break-inside: avoid;">`;
               questionsHtml += `<b>Question ${currentNum}.</b> ${cleanContent}`;
               questionsHtml += `<div class="ans-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:5px;">`;
               
@@ -866,7 +869,7 @@ YÊU CẦU:
       });
 
       // Generate Answer Key Table (4 Rows x 10 Cols)
-      let keyTable = `<h3 style="text-align:center; margin-top:30px; border-top:2px dashed #ccc; padding-top:20px;">BẢNG ĐÁP ÁN - MÃ ĐỀ ${code}</h3>`;
+      let keyTable = `<h3 style="text-align:center; margin-top:30px; border-top:2px dashed #ccc; padding-top:20px; page-break-before: always;">BẢNG ĐÁP ÁN - MÃ ĐỀ ${code}</h3>`;
       keyTable += `<table border="1" style="width:100%; border-collapse:collapse; text-align:center;">`;
       
       // Calculate how many columns needed (usually 10)
