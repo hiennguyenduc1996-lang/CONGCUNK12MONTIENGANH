@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } from "@google/genai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
 // Define mammoth type for TypeScript
 declare global {
@@ -14,26 +14,6 @@ interface TestVariant {
   htmlContent: string; // The full test HTML
   answerKeyHtml: string; // Just the extracted answer table
   name: string; // "Mã đề 101"
-}
-
-// --- NEW INTERFACES FOR SHUFFLE LOGIC ---
-interface ParsedAnswer {
-  text: string;
-  isCorrect: boolean;
-}
-
-interface ParsedQuestion {
-  id: string;
-  originalNumber: number;
-  content: string; // HTML content of question stem
-  answers: ParsedAnswer[];
-}
-
-interface ExamGroup {
-  type: 'READING_COMPREHENSION' | 'CLOZE_TEST' | 'MISC';
-  title: string;
-  passageContent: string; // HTML
-  questions: ParsedQuestion[];
 }
 
 // DEFINING QUESTION TYPES AND THEIR SPECIFIC SUB-TOPICS (FOCUS)
@@ -151,8 +131,8 @@ const GRAMMAR_TOPICS = [
 
 const App = () => {
   // --- TABS STATE ---
-  const [activeTab, setActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'newsletter' | 'settings' | 'shuffle'>('upload');
-  const [lastActiveTab, setLastActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'newsletter' | 'shuffle'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'newsletter' | 'settings'>('upload');
+  const [lastActiveTab, setLastActiveTab] = useState<'upload' | 'create' | 'vocab' | 'grammar' | 'newsletter'>('upload');
 
   // --- API KEY STATE ---
   const [userApiKey, setUserApiKey] = useState<string>("");
@@ -166,7 +146,6 @@ const App = () => {
   const [useCustomCodes, setUseCustomCodes] = useState<boolean>(false);
   const [customCodesRaw, setCustomCodesRaw] = useState<string>("");
   const [fileName, setFileName] = useState<string>("");
-  const [parsedExamData, setParsedExamData] = useState<ExamGroup[] | null>(null); // Cached parsed data
 
   // --- TAB 2 STATE: CONTENT CREATION ---
   const [createType, setCreateType] = useState<string>(QUESTION_DATA[0].id);
@@ -379,7 +358,6 @@ NHIỆM VỤ:
       setError(null);
       setGeneratedVariants([]);
       setSelectedVariantId(null);
-      setParsedExamData(null); // Reset parsed data on new file
     }
   };
 
@@ -679,350 +657,6 @@ YÊU CẦU:
     const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(createWordHtml(combined, "Master Key"));
     const link = document.createElement("a");
     link.href = source; link.download = `TONG_HOP_DAP_AN.doc`; link.click();
-  };
-
-  // --- SHUFFLE LOGIC HELPERS ---
-
-  const parseExamStructure = async (ai: GoogleGenAI, modelId: string, file: File): Promise<ExamGroup[]> => {
-    let contentPart: any = null;
-    
-    if (file.type === "application/pdf") {
-        contentPart = await fileToGenericPart(file);
-    } else {
-        const extractedHtml = await extractHtmlFromDocx(file);
-        contentPart = { text: `HTML Content of Exam:\n${extractedHtml}` };
-    }
-
-    const prompt = `
-    You are an expert English Exam Formatter and Parser.
-    Your goal is to normalize a raw exam file into a standard structured JSON.
-    The input file may have POOR FORMATTING (e.g., split lines, missing answer labels, merged text, weird characters).
-
-    **CRITICAL DATA CLEANING & NORMALIZATION RULES:**
-    1. **Merge Split Lines:** If a question stem or answer is cut off (e.g., "Quest" line 1, "ion 1" line 2), merge them into one coherent line.
-    2. **Fix Missing Labels:** If answers are listed as "Cat Dog Bird Fish" or just on new lines without "A. B. C. D.", assign them labels A, B, C, D in order.
-    3. **Separate Stuck Text:** If a question and its answers are stuck together (e.g. "Question 1. HelloA. HiB. Bye"), split them intelligently.
-    4. **Detect Correct Answers:** Look for **Bold**, **Underline**, **Red Color**, or an asterisk (*). If NO explicit marker is found, default 'isCorrect' to false.
-    5. **Clean Content:** Remove excessive underscores (____) used for blanks, replacing them with a standard '_______'.
-    
-    **CRITICAL GROUPING RULES (for Shuffling):**
-    1. **Split the exam into as many DISTINCT groups as possible**. 
-    2. Each **Reading Passage** and its questions MUST be a separate 'READING_COMPREHENSION' group.
-    3. Each **Cloze Test** (passage with gaps) MUST be a separate 'CLOZE_TEST' group.
-    4. For **MISC** questions (Grammar, Phonetics, Exchange), if they have different instructions (e.g. "Mark the word whose underlined part...", "Mark the correct answer..."), SPLIT them into separate 'MISC' groups.
-    
-    Output schema:
-    [
-      {
-        "type": "READING_COMPREHENSION" | "CLOZE_TEST" | "MISC",
-        "title": "Instruction text (e.g. 'Read the passage...', 'Mark the letter A, B, C, D...')",
-        "passageContent": "HTML string or empty",
-        "questions": [
-           { "originalNumber": 1, "content": "HTML string (NO 'Question X' prefix)", "answers": [{ "text": "string (NO 'A.' prefix)", "isCorrect": boolean }] }
-        ]
-      }
-    ]
-    `;
-
-    const response = await ai.models.generateContent({
-        model: modelId,
-        contents: { parts: [contentPart, { text: prompt }] },
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        type: { type: Type.STRING, enum: ["READING_COMPREHENSION", "CLOZE_TEST", "MISC"] },
-                        title: { type: Type.STRING },
-                        passageContent: { type: Type.STRING },
-                        questions: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    originalNumber: { type: Type.INTEGER },
-                                    content: { type: Type.STRING },
-                                    answers: {
-                                        type: Type.ARRAY,
-                                        items: {
-                                            type: Type.OBJECT,
-                                            properties: {
-                                                text: { type: Type.STRING },
-                                                isCorrect: { type: Type.BOOLEAN }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    return JSON.parse(response.text || "[]");
-  };
-
-  const performOfflineShuffle = (groups: ExamGroup[]): ExamGroup[] => {
-    // Deep copy to avoid mutating original
-    const newGroups = JSON.parse(JSON.stringify(groups)) as ExamGroup[];
-
-    // RULE 4: Shuffle Groups themselves (requested: "Trộn thứ tự các nhóm câu hỏi luôn")
-    for (let i = newGroups.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [newGroups[i], newGroups[j]] = [newGroups[j], newGroups[i]];
-    }
-
-    newGroups.forEach(group => {
-        // RULE 2 & 3: Shuffle questions if NOT Cloze Test
-        if (group.type !== 'CLOZE_TEST') {
-            for (let i = group.questions.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [group.questions[i], group.questions[j]] = [group.questions[j], group.questions[i]];
-            }
-        }
-
-        // RULE 1: Always shuffle answers for ALL questions
-        group.questions.forEach(q => {
-            for (let i = q.answers.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [q.answers[i], q.answers[j]] = [q.answers[j], q.answers[i]];
-            }
-        });
-    });
-
-    return newGroups;
-  };
-
-  const renderShuffledToHtml = (groups: ExamGroup[], code: string) => {
-      let html = `<h3 style="text-align:center; color:#1e40af;">MÃ ĐỀ THI: ${code}</h3>`;
-      let globalQNum = 1;
-      const keyData: {num: number, ans: string}[] = [];
-
-      groups.forEach(group => {
-          // Update Instruction Title with new Question Numbers
-          let processedTitle = group.title || "";
-          if (processedTitle && group.questions.length > 0) {
-              const startNum = globalQNum;
-              const endNum = globalQNum + group.questions.length - 1;
-              
-              // Replace "Questions 1-5", "questions from 1 to 5", "Câu 1-5"
-              // Matches: (prefix)(num1)(separator)(num2)
-              // FIX: Regex separator must handle 'to' and 'đến' as words, not chars in []
-              processedTitle = processedTitle.replace(/(\b(?:Questions?|Câu|from|từ)\s+)(\d+)(\s*(?:[-–—]|to|đến)\s*)(\d+)/gi, (match, prefix, n1, sep, n2) => {
-                  // Safety check: only replace if numbers are likely question numbers (e.g., < 200)
-                  if (parseInt(n1) < 200 && parseInt(n2) < 200) {
-                      return `${prefix}${startNum}${sep}${endNum}`;
-                  }
-                  return match;
-              });
-
-              // Replace "Question 1" (singular) if group has only 1 question
-              if (group.questions.length === 1) {
-                   processedTitle = processedTitle.replace(/(\b(?:Question|Câu)\s+)(\d+)(?!\d)/gi, (match, prefix, n1) => {
-                      if (parseInt(n1) < 200) return `${prefix}${startNum}`;
-                      return match;
-                   });
-              }
-          }
-
-          html += `<div class="group-section mb-6" style="margin-bottom:25px; break-inside: avoid-page;">`;
-          if (processedTitle) html += `<p style="font-weight:bold; font-style:italic; margin-bottom:10px;">${processedTitle}</p>`;
-          
-          let passageHtml = group.passageContent || "";
-          
-          // Render questions to string first to get count
-          let questionsHtml = "";
-          
-          group.questions.forEach(q => {
-              const currentNum = globalQNum++;
-              
-              // Find correct answer index for Key
-              const correctIdx = q.answers.findIndex(a => a.isCorrect);
-              const correctChar = ['A', 'B', 'C', 'D'][correctIdx] || '?';
-              keyData.push({ num: currentNum, ans: correctChar });
-
-              // FIX 1: Remove "Question X." or "Câu X." prefix from content
-              let cleanContent = q.content.replace(/^(Question|Câu|Q)\s*\d+[\.:\)]\s*/i, '').trim();
-              // Remove just leading numbers "1. "
-              cleanContent = cleanContent.replace(/^\d+[\.:\)]\s*/, '').trim();
-
-              // FIX 3: Format conversation lines (a- ... b- ...)
-              // Detect "a- " or "a. " or "<br>a- "
-              // Replace with <br/><b>a.</b> ...
-              cleanContent = cleanContent.replace(/(^|\s|<br\/?>)([a-e])\s*[-–\.]\s+/gi, '$1<br/><b>$2.</b> ');
-
-              questionsHtml += `<div class="question-block" style="margin-bottom:15px; break-inside: avoid;">`;
-              questionsHtml += `<b>Question ${currentNum}.</b> ${cleanContent}`;
-              questionsHtml += `<div class="ans-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:5px;">`;
-              
-              q.answers.forEach((ans, aIdx) => {
-                  const label = ['A', 'B', 'C', 'D'][aIdx];
-                  
-                  // FIX 2: Clean answer text (Remove "A.", "B.", "#D.", etc.)
-                  let cleanAns = ans.text.replace(/^([A-D]|#[A-D])[\.:\)]\s*/i, '').trim();
-                  // Fallback for just "#" or "*"
-                  cleanAns = cleanAns.replace(/^[\#\*]\s*/, '').trim();
-
-                  questionsHtml += `<div class="ans-opt"><b>${label}.</b> ${cleanAns}</div>`;
-              });
-              questionsHtml += `</div></div>`;
-          });
-
-          // Handle Cloze Passage Gap Renumbering (Rule 3 Rendering)
-          if (group.type === 'CLOZE_TEST' && passageHtml) {
-              // Heuristic: Replace (1), (2), [1]... with new sequential numbers
-              const startNum = globalQNum - group.questions.length;
-              let gapCounter = 0;
-              // Regex matches (1), [1], 1., space 1 space
-              // Caution: Simple replacement. Assumes standard format.
-              passageHtml = passageHtml.replace(/(\(|\[|\s)(\d+)(\)|\]|\.| )/g, (match, p1, p2, p3) => {
-                  // Only replace small numbers (likely gaps), avoid years like 1999
-                  if (parseInt(p2) < 100) {
-                      const newNum = startNum + gapCounter;
-                      gapCounter++;
-                      // Wrap in simple (X) format
-                      return ` (${newNum}) `;
-                  }
-                  return match;
-              });
-              html += `<div class="passage-box" style="border:1px solid #ccc; background:#f9fafb; padding:15px; margin-bottom:15px;">${passageHtml}</div>`;
-          } else if (passageHtml) {
-              html += `<div class="passage-box" style="border:1px solid #ccc; background:#f9fafb; padding:15px; margin-bottom:15px;">${passageHtml}</div>`;
-          }
-
-          html += questionsHtml;
-          html += `</div>`;
-      });
-
-      // Generate Answer Key Table (4 Rows x 10 Cols)
-      let keyTable = `<h3 style="text-align:center; margin-top:30px; border-top:2px dashed #ccc; padding-top:20px; page-break-before: always;">BẢNG ĐÁP ÁN - MÃ ĐỀ ${code}</h3>`;
-      keyTable += `<table border="1" style="width:100%; border-collapse:collapse; text-align:center;">`;
-      
-      // Calculate how many columns needed (usually 10)
-      const maxCols = 10;
-      const rows = Math.ceil(keyData.length / maxCols);
-      
-      // We want exactly 4 rows? Or dynamic? User said "4 hàng, 10 cột". Assuming 40 questions.
-      // Dynamic is safer.
-      for(let r=0; r < 4; r++) {
-          keyTable += `<tr>`;
-          for(let c=0; c < 10; c++) {
-              const idx = r * 10 + c;
-              if (idx < keyData.length) {
-                  const item = keyData[idx];
-                  keyTable += `<td style="padding:5px;"><b>${item.num}</b>.${item.ans}</td>`;
-              } else {
-                  keyTable += `<td></td>`;
-              }
-          }
-          keyTable += `</tr>`;
-      }
-      keyTable += `</table>`;
-
-      return { html, keyHtml: keyTable };
-  };
-
-  const handleStandardize = async () => {
-    if (!file) return setError("Vui lòng chọn file.");
-    setIsLoading(true); setError(null);
-    setLoadingStatus("Đang chuẩn hóa và phân tích cấu trúc đề...");
-
-    try {
-        const ai = new GoogleGenAI({ apiKey: getApiKey() });
-        // Use gemini-2.5-flash for speed and context
-        const structure = await parseExamStructure(ai, "gemini-2.5-flash", file);
-        
-        if (!structure || structure.length === 0) {
-            throw new Error("Không nhận diện được câu hỏi nào. Vui lòng kiểm tra file.");
-        }
-
-        setParsedExamData(structure);
-
-        // Generate a preview of the "Normalized" exam (No shuffle yet)
-        const { html, keyHtml } = renderShuffledToHtml(structure, "BẢN GỐC");
-        
-        const preview: TestVariant = {
-            id: "normalized-preview",
-            name: "Bản Chuẩn Hóa (Gốc)",
-            htmlContent: html + keyHtml,
-            answerKeyHtml: keyHtml
-        };
-
-        setGeneratedVariants([preview]);
-        setSelectedVariantId("normalized-preview");
-        setLoadingStatus("Đã chuẩn hóa xong. Hãy kiểm tra bên phải, sau đó bấm 'Tạo Mã Đề'.");
-
-    } catch (err: any) {
-        setError("Lỗi chuẩn hóa: " + err.message);
-    } finally {
-        setIsLoading(false);
-    }
-  };
-
-  const handleShuffleTests = async () => {
-    if (!file) return setError("Vui lòng chọn file.");
-    
-    // 1. Get Codes
-    let codesToGenerate: string[] = [];
-    if (useCustomCodes) {
-       codesToGenerate = customCodesRaw.split(',').map(s => s.trim()).filter(s => s !== "");
-       if (codesToGenerate.length === 0) return setError("Nhập ít nhất một mã đề.");
-    } else {
-       if (numCopies < 1 || numCopies > 10) return setError("Số lượng đề từ 1-10.");
-       for(let i = 0; i < numCopies; i++) codesToGenerate.push(Math.floor(100 + Math.random() * 900).toString());
-    }
-
-    setIsLoading(true); setError(null);
-    // Don't clear variants immediately if we are viewing the standardized preview
-    // setGeneratedVariants([]); 
-    
-    try {
-        let structure = parsedExamData;
-
-        // 2. Parse Structure (AI) if not already done
-        if (!structure) {
-            setLoadingStatus("Đang phân tích cấu trúc đề thi (Tự động chuẩn hóa)...");
-            const ai = new GoogleGenAI({ apiKey: getApiKey() });
-            structure = await parseExamStructure(ai, "gemini-2.5-flash", file);
-            if (!structure || structure.length === 0) throw new Error("Không nhận diện được câu hỏi.");
-            setParsedExamData(structure); // Save for future use
-        }
-
-        // 3. Loop Codes -> Offline Shuffle -> Render
-        let completed = 0;
-        const newVariants: TestVariant[] = [];
-        
-        for (const code of codesToGenerate) {
-            setLoadingStatus(`Đang trộn đề ${code} (${completed + 1}/${codesToGenerate.length})...`);
-            
-            // Offline Shuffle
-            const shuffledData = performOfflineShuffle(structure);
-            
-            // Render
-            const { html, keyHtml } = renderShuffledToHtml(shuffledData, code);
-            
-            newVariants.push({
-                id: code,
-                name: `Mã đề ${code} (Trộn)`,
-                htmlContent: html + keyHtml, // Append key to end of content for display
-                answerKeyHtml: keyHtml // Separate key for master file
-            });
-            completed++;
-        }
-        
-        setGeneratedVariants(newVariants);
-        if (newVariants.length > 0) setSelectedVariantId(newVariants[0].id);
-
-    } catch (err: any) {
-        setError("Lỗi quy trình trộn đề: " + err.message);
-    } finally {
-        setIsLoading(false);
-        setLoadingStatus("");
-    }
   };
 
   // --- TAB 2 HANDLERS: CREATE NEW CONTENT ---
@@ -1411,8 +1045,7 @@ Hãy làm thật chi tiết và đẹp mắt.
                 <button onClick={() => setActiveTab('create')} className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'create' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Soạn Bài</button>
                 <button onClick={() => setActiveTab('vocab')} className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'vocab' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Từ Vựng</button>
                 <button onClick={() => setActiveTab('grammar')} className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'grammar' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Ngữ Pháp</button>
-                <button onClick={() => setActiveTab('newsletter')} className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'newsletter' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Bản Tin</button>
-                <button onClick={() => setActiveTab('shuffle')} className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'shuffle' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Trộn Đề</button>
+                <button onClick={() => setActiveTab('newsletter')} className={`col-span-2 py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'newsletter' ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-300 hover:text-white hover:bg-blue-800'}`}>Bản Tin</button>
               </div>
           )}
 
@@ -1566,154 +1199,344 @@ Hãy làm thật chi tiết và đẹp mắt.
             </div>
           )}
 
-          {/* === CONTENT FOR TAB: SHUFFLE === */}
-          {activeTab === 'shuffle' && (
-            <div className="space-y-6 animate-fade-in-up">
-              {/* Step 1: Upload */}
-              <div>
-                <div className="flex items-center gap-2 mb-2 text-blue-200 uppercase text-xs font-bold tracking-wider">
-                  <span className="w-5 h-5 rounded-full border border-blue-300 flex items-center justify-center text-[10px]">1</span>
-                  Tải lên tài liệu (PDF, DOCX, DOC)
-                </div>
-                
-                <label className="block w-full cursor-pointer group">
-                  <div className={`
-                    relative border-2 border-dashed rounded-xl p-6 transition-all duration-300
-                    ${file ? 'border-green-400 bg-green-500/20' : 'border-blue-400/30 hover:border-blue-300 hover:bg-blue-800/50'}
-                  `}>
-                    <input 
-                      type="file" 
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      accept=".pdf,.docx,.doc" 
-                      onChange={handleFileChange}
-                    />
-                    <div className="text-center space-y-2 pointer-events-none">
-                      {file ? (
-                        <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <p className="text-base font-medium text-green-300 truncate px-2">{fileName}</p>
-                        </>
-                      ) : (
-                        <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto text-blue-300/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                          <p className="text-base font-medium text-blue-100">Kéo thả PDF / DOCX / DOC</p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </label>
-              </div>
-
-              {/* Step 2: Settings */}
-              <div>
-                 <div className="flex items-center gap-2 mb-2 text-blue-200 uppercase text-xs font-bold tracking-wider">
-                  <span className="w-5 h-5 rounded-full border border-blue-300 flex items-center justify-center text-[10px]">2</span>
-                  Cấu hình
+          {/* === CONTENT FOR TAB 2: CREATE CONTENT === */}
+          {activeTab === 'create' && (
+             <div className="space-y-6 animate-fade-in-up">
+                <div>
+                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Loại bài tập:</label>
+                   <select 
+                      value={createType} onChange={(e) => setCreateType(e.target.value)}
+                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
+                   >
+                      {QUESTION_DATA.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                   </select>
                 </div>
 
-                <div className="mb-3">
-                   <label className="flex items-center gap-2 cursor-pointer text-sm text-blue-100">
+                {/* Sub-topic / Focus Selection */}
+                <div>
+                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Trọng tâm kiến thức:</label>
+                   <select 
+                      value={createFocus} onChange={(e) => setCreateFocus(e.target.value)}
+                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
+                   >
+                      {currentTypeObj?.topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                   </select>
+                </div>
+
+                <div>
+                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Mức độ:</label>
+                   <select 
+                      value={createLevel} onChange={(e) => setCreateLevel(e.target.value)}
+                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
+                   >
+                      {DIFFICULTY_LEVELS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                   </select>
+                </div>
+
+                <div>
+                  <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chủ đề (Tùy chọn):</label>
+                  <input 
+                    type="text" placeholder="VD: Environment, Education..." 
+                    value={createTopic} onChange={(e) => setCreateTopic(e.target.value)}
+                    className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white placeholder-blue-600 focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                   <div className="flex-1">
+                      <label className="text-sm text-blue-200 block mb-1.5 font-medium">Số bài (Texts):</label>
                       <input 
-                        type="checkbox" 
-                        checked={useCustomCodes}
-                        onChange={(e) => setUseCustomCodes(e.target.checked)}
-                        className="w-4 h-4 rounded border-blue-400 text-blue-600 bg-blue-900 focus:ring-blue-500"
+                        type="number" min="1" 
+                        value={quantityPassages} onChange={(e) => setQuantityPassages(parseInt(e.target.value) || 1)}
+                        className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:border-blue-500"
                       />
-                      <span>Nhập mã đề thủ công</span>
-                   </label>
+                   </div>
+                   <div className="flex-1">
+                      <label className="text-sm text-blue-200 block mb-1.5 font-medium">Số câu/bài:</label>
+                      <input 
+                        type="number" min="1" max="15" 
+                        value={questionsPerPassage} onChange={(e) => setQuestionsPerPassage(parseInt(e.target.value) || 5)}
+                        className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:border-blue-500"
+                      />
+                   </div>
                 </div>
 
-                {useCustomCodes ? (
-                  <div className="mb-4">
-                    <label className="text-sm text-blue-200 block mb-1">Mã đề (cách nhau dấu phẩy):</label>
-                    <input 
-                      type="text" 
-                      placeholder="VD: 101, 102, 103"
-                      value={customCodesRaw}
-                      onChange={(e) => setCustomCodesRaw(e.target.value)}
-                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                ) : (
-                  <div className="mb-4">
-                    <label className="text-sm text-blue-200 block mb-1">Số lượng đề:</label>
-                    <input 
-                      type="number" min="1" max="10" 
-                      value={numCopies}
-                      onChange={(e) => setNumCopies(parseInt(e.target.value) || 1)}
-                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                )}
-                
                 <div className="space-y-3">
-                    <button
-                      onClick={handleStandardize}
-                      disabled={isLoading || !file}
-                      className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
-                        ${isLoading || !file ? 'bg-blue-950 text-blue-500 cursor-not-allowed border border-blue-800' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
-                    >
-                      {isLoading && loadingStatus.includes("chuẩn hóa") ? (
-                        <>
+                  <button
+                    onClick={handleCreateContent}
+                    disabled={isLoading}
+                    className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
+                      ${isLoading ? 'bg-blue-950 text-blue-500 border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
+                  >
+                    {isLoading ? (
+                      <>
                           <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                          <span className="text-sm">Đang chuẩn hóa...</span>
-                        </>
-                      ) : (
-                        <>
+                          <span className="text-sm">{loadingStatus || "Đang xử lý..."}</span>
+                      </>
+                    ) : (
+                      <>
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                          <span>Chuẩn hóa đề (AI)</span>
-                        </>
-                      )}
-                    </button>
+                          <span>Soạn Thảo Ngay</span>
+                      </>
+                    )}
+                  </button>
+                  
+                  <button
+                    onClick={handleGenerateSolution}
+                    disabled={isLoading}
+                    className="w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                     <span>Tạo Hướng Dẫn Giải</span>
+                  </button>
+                </div>
+             </div>
+          )}
 
-                    <button
-                      onClick={handleShuffleTests}
-                      disabled={isLoading || !file || (useCustomCodes && numCopies === 0)}
-                      className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
-                        ${isLoading || !file ? 'bg-blue-950 text-blue-500 cursor-not-allowed border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
-                    >
-                      {isLoading && !loadingStatus.includes("chuẩn hóa") ? (
-                        <>
-                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                          <span className="text-sm">{loadingStatus}</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                          <span>Tạo {numCopies} Mã Đề (Trộn Offline)</span>
-                        </>
-                      )}
-                    </button>
+          {/* === CONTENT FOR TAB 3: VOCABULARY TOPICS === */}
+          {activeTab === 'vocab' && (
+             <div className="space-y-6 animate-fade-in-up">
+                <div>
+                   <label className="text-sm text-blue-200 block mb-2 font-medium">Chế độ chọn:</label>
+                   <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer bg-blue-950/50 p-2 rounded-lg border border-blue-800 flex-1 justify-center hover:bg-blue-900 transition">
+                         <input type="radio" checked={vocabMode === 'single'} onChange={() => setVocabMode('single')} className="text-blue-600 focus:ring-blue-500" />
+                         <span className="text-white text-sm font-medium">Chủ đề đơn</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer bg-blue-950/50 p-2 rounded-lg border border-blue-800 flex-1 justify-center hover:bg-blue-900 transition">
+                         <input type="radio" checked={vocabMode === 'mix'} onChange={() => setVocabMode('mix')} className="text-blue-600 focus:ring-blue-500" />
+                         <span className="text-white text-sm font-medium">Trộn chủ đề</span>
+                      </label>
+                   </div>
                 </div>
 
-              </div>
-
-              {/* Step 3: Result List */}
-              {generatedVariants.length > 0 && (
-                <div className="animate-fade-in-up">
-                  <div className="flex items-center gap-2 mb-2 text-blue-200 uppercase text-xs font-bold tracking-wider">
-                    <span className="w-5 h-5 rounded-full border border-blue-300 flex items-center justify-center text-[10px]">3</span>
-                    Kết quả
-                  </div>
-                  <div className="space-y-2 mb-4">
-                    {generatedVariants.map((variant) => (
-                      <div 
-                        key={variant.id} onClick={() => setSelectedVariantId(variant.id)}
-                        className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${selectedVariantId === variant.id ? 'bg-blue-700 border-blue-500 shadow-md' : 'bg-blue-950/50 border border-blue-800 hover:bg-blue-900'}`}
+                {vocabMode === 'single' ? (
+                   <div>
+                      <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chọn Chủ đề:</label>
+                      <select 
+                         value={selectedVocabTopic} onChange={(e) => setSelectedVocabTopic(e.target.value)}
+                         className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
                       >
-                        <span className="font-medium text-sm text-white truncate max-w-[200px]">{variant.name}</span>
-                        <button onClick={(e) => {e.stopPropagation(); downloadDocx(variant);}} className="p-1.5 hover:bg-blue-600 rounded-md text-blue-200 hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg></button>
+                         {VOCAB_TOPICS.map((topic, idx) => <option key={idx} value={topic}>{topic}</option>)}
+                      </select>
+                   </div>
+                ) : (
+                   <div>
+                      <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chọn các chủ đề muốn trộn:</label>
+                      <div className="w-full bg-blue-950 border border-blue-700 rounded-lg p-2 max-h-48 overflow-y-auto custom-scrollbar">
+                         {VOCAB_TOPICS.map((topic, idx) => (
+                            <label key={idx} className="flex items-center gap-2 p-1.5 hover:bg-blue-900 rounded cursor-pointer">
+                               <input 
+                                  type="checkbox" 
+                                  checked={selectedMixTopics.includes(topic)}
+                                  onChange={() => handleMixTopicToggle(topic)}
+                                  className="rounded border-blue-500 text-blue-600 bg-blue-900 focus:ring-0"
+                               />
+                               <span className="text-sm text-blue-100">{topic}</span>
+                            </label>
+                         ))}
                       </div>
-                    ))}
-                  </div>
-                  <button onClick={downloadMasterKey} className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-md">Tải File Tổng Hợp Đáp Án</button>
+                      <p className="text-xs text-blue-300 mt-1">Đã chọn: {selectedMixTopics.length} chủ đề</p>
+                   </div>
+                )}
+
+                <div>
+                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Mức độ:</label>
+                   <select 
+                      value={vocabLevel} onChange={(e) => setVocabLevel(e.target.value)}
+                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
+                   >
+                      {DIFFICULTY_LEVELS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                   </select>
                 </div>
-              )}
-            </div>
+
+                <div>
+                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Số lượng câu hỏi:</label>
+                   <input 
+                     type="number" min="5" max="100"
+                     value={vocabQuestionCount} onChange={(e) => setVocabQuestionCount(parseInt(e.target.value) || 10)}
+                     className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:border-blue-500"
+                   />
+                </div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={handleCreateVocab}
+                    disabled={isLoading}
+                    className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
+                      ${isLoading ? 'bg-blue-950 text-blue-500 border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
+                  >
+                    {isLoading ? (
+                      <>
+                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          <span className="text-sm">{loadingStatus || "Đang tạo câu hỏi..."}</span>
+                      </>
+                    ) : (
+                      <>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                          <span>Tạo Câu Hỏi</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleGenerateSolution}
+                    disabled={isLoading}
+                    className="w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                     <span>Tạo Hướng Dẫn Giải</span>
+                  </button>
+                </div>
+             </div>
+          )}
+
+          {/* === CONTENT FOR TAB 4: GRAMMAR === */}
+          {activeTab === 'grammar' && (
+             <div className="space-y-6 animate-fade-in-up">
+                
+                <div>
+                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chuyên đề Ngữ pháp:</label>
+                   <select 
+                      value={selectedGrammarTopic} onChange={(e) => setSelectedGrammarTopic(e.target.value)}
+                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
+                   >
+                      {GRAMMAR_TOPICS.map((topic, idx) => <option key={idx} value={topic}>{topic}</option>)}
+                   </select>
+                </div>
+
+                <div>
+                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Mức độ:</label>
+                   <select 
+                      value={grammarLevel} onChange={(e) => setGrammarLevel(e.target.value)}
+                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
+                   >
+                      {DIFFICULTY_LEVELS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                   </select>
+                </div>
+
+                <div>
+                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Số lượng câu hỏi:</label>
+                   <input 
+                     type="number" min="5" max="100"
+                     value={grammarQuestionCount} onChange={(e) => setGrammarQuestionCount(parseInt(e.target.value) || 10)}
+                     className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:border-blue-500"
+                   />
+                </div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={handleCreateGrammar}
+                    disabled={isLoading}
+                    className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
+                      ${isLoading ? 'bg-blue-950 text-blue-500 border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
+                  >
+                    {isLoading ? (
+                      <>
+                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          <span className="text-sm">{loadingStatus || "Đang tạo câu hỏi..."}</span>
+                      </>
+                    ) : (
+                      <>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                          <span>Tạo Câu Hỏi Ngữ Pháp</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleGenerateSolution}
+                    disabled={isLoading}
+                    className="w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                     <span>Tạo Hướng Dẫn Giải</span>
+                  </button>
+                </div>
+             </div>
+          )}
+
+          {/* === CONTENT FOR TAB 5: NEWSLETTER (NEW) === */}
+          {activeTab === 'newsletter' && (
+             <div className="space-y-6 animate-fade-in-up">
+                
+                <div>
+                   <label className="text-sm text-blue-200 block mb-2 font-medium">Chọn nguồn đầu vào:</label>
+                   <div className="flex flex-col gap-2">
+                      <label className="flex items-center gap-3 cursor-pointer bg-blue-950/50 p-2.5 rounded-lg border border-blue-800 hover:bg-blue-900 transition">
+                         <input type="radio" checked={newsletterMode === 'topic'} onChange={() => setNewsletterMode('topic')} className="text-blue-600 focus:ring-blue-500" />
+                         <div>
+                            <span className="text-white text-sm font-bold block">Chủ đề (Topic)</span>
+                            <span className="text-blue-300 text-xs">AI tự viết nội dung mới</span>
+                         </div>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer bg-blue-950/50 p-2.5 rounded-lg border border-blue-800 hover:bg-blue-900 transition">
+                         <input type="radio" checked={newsletterMode === 'url'} onChange={() => setNewsletterMode('url')} className="text-blue-600 focus:ring-blue-500" />
+                         <div>
+                            <span className="text-white text-sm font-bold block">Link bài báo (URL)</span>
+                            <span className="text-blue-300 text-xs">AI đọc và tóm tắt lại</span>
+                         </div>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer bg-blue-950/50 p-2.5 rounded-lg border border-blue-800 hover:bg-blue-900 transition">
+                         <input type="radio" checked={newsletterMode === 'text'} onChange={() => setNewsletterMode('text')} className="text-blue-600 focus:ring-blue-500" />
+                         <div>
+                            <span className="text-white text-sm font-bold block">Văn bản thô (Raw Text)</span>
+                            <span className="text-blue-300 text-xs">Dán nội dung có sẵn</span>
+                         </div>
+                      </label>
+                   </div>
+                </div>
+
+                <div>
+                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">
+                      {newsletterMode === 'topic' ? 'Nhập chủ đề:' : (newsletterMode === 'url' ? 'Dán đường link (URL):' : 'Dán văn bản gốc:')}
+                   </label>
+                   {newsletterMode === 'text' ? (
+                       <textarea 
+                          value={newsletterInput} onChange={(e) => setNewsletterInput(e.target.value)}
+                          placeholder="Paste text here..."
+                          className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white placeholder-blue-600 focus:border-blue-500 h-32 custom-scrollbar"
+                       />
+                   ) : (
+                       <input 
+                         type="text" 
+                         value={newsletterInput} onChange={(e) => setNewsletterInput(e.target.value)}
+                         placeholder={newsletterMode === 'topic' ? "VD: Artificial Intelligence in Education" : "https://..."}
+                         className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white placeholder-blue-600 focus:border-blue-500"
+                       />
+                   )}
+                </div>
+
+                <div className="bg-blue-800/30 p-3 rounded-lg border border-blue-700/50 text-xs text-blue-200">
+                    <p className="font-bold mb-1 text-blue-100">Cấu trúc Bản tin (4 trang):</p>
+                    <ul className="list-disc pl-4 space-y-1">
+                        <li>Bài báo song ngữ (Anh-Việt) chi tiết.</li>
+                        <li>50 từ vựng trọng tâm (Bảng).</li>
+                        <li>Phân loại cấp độ B1-B2-C1.</li>
+                    </ul>
+                </div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={handleCreateNewsletter}
+                    disabled={isLoading}
+                    className={`w-full py-3.5 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all 
+                      ${isLoading ? 'bg-blue-950 text-blue-500 border border-blue-800' : 'bg-white hover:bg-blue-50 text-blue-900'}`}
+                  >
+                    {isLoading ? (
+                      <>
+                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          <span className="text-sm">{loadingStatus || "Đang viết bản tin..."}</span>
+                      </>
+                    ) : (
+                      <>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>
+                          <span>Tạo Bản Tin</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+             </div>
           )}
 
           {/* === CONTENT FOR TAB 6: SETTINGS (NEW) === */}
@@ -1805,11 +1628,11 @@ Hãy làm thật chi tiết và đẹp mắt.
             </svg>
             {activeTab === 'upload' 
                ? (activeVariant ? `Xem trước: ${activeVariant.name}` : 'Xem trước đề thi') 
-               : (activeTab === 'vocab' ? 'Câu hỏi Chủ đề (Vocabulary)' : (activeTab === 'grammar' ? 'Câu hỏi Ngữ pháp' : (activeTab === 'newsletter' ? 'Bản Tin Song Ngữ' : (activeTab === 'settings' ? 'Thông tin & Cài đặt' : (activeTab === 'shuffle' ? (activeVariant ? `Xem: ${activeVariant.name}` : 'Trộn Đề Thi Offline') : 'Nội dung biên soạn')))))}
+               : (activeTab === 'vocab' ? 'Câu hỏi Chủ đề (Vocabulary)' : (activeTab === 'grammar' ? 'Câu hỏi Ngữ pháp' : (activeTab === 'newsletter' ? 'Bản Tin Song Ngữ' : (activeTab === 'settings' ? 'Thông tin & Cài đặt' : 'Nội dung biên soạn'))))}
           </h2>
           
           <div className="flex gap-2">
-            {(activeTab === 'upload' || activeTab === 'shuffle') && activeVariant && (
+            {activeTab === 'upload' && activeVariant && (
               <button onClick={() => downloadDocx(activeVariant)} className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm flex items-center gap-2 transition-all">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                 Tải đề này (.doc)
@@ -1870,8 +1693,8 @@ Hãy làm thật chi tiết và đẹp mắt.
                 .badge-c1 { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
               `}</style>
 
-           {/* VIEW FOR TAB 1 & SHUFFLE */}
-           {(activeTab === 'upload' || activeTab === 'shuffle') && (
+           {/* VIEW FOR TAB 1 */}
+           {activeTab === 'upload' && (
               activeVariant ? (
                 <div className="generated-content-wrapper w-full bg-white min-h-screen p-10 shadow-xl animate-fade-in-up">
                   <div className="generated-content prose prose-slate max-w-none text-lg leading-relaxed text-gray-900" dangerouslySetInnerHTML={{ __html: activeVariant.htmlContent }} />
@@ -1881,9 +1704,7 @@ Hãy làm thật chi tiết và đẹp mắt.
                   <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                   </div>
-                  <p className="text-xl font-medium text-slate-400">
-                      {activeTab === 'upload' ? 'Chưa có đề thi nào' : 'Tải file và bấm Chuẩn hóa/Tạo đề'}
-                  </p>
+                  <p className="text-xl font-medium text-slate-400">Chưa có đề thi nào</p>
                 </div>
               )
            )}
