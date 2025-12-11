@@ -156,11 +156,12 @@ const App = () => {
   const [questionsPerPassage, setQuestionsPerPassage] = useState<number>(5); 
   
   // --- TAB 3 STATE: VOCABULARY TOPICS ---
-  const [vocabMode, setVocabMode] = useState<'single' | 'mix'>('single');
+  const [vocabMode, setVocabMode] = useState<'single' | 'mix' | 'manual'>('single');
   const [selectedVocabTopic, setSelectedVocabTopic] = useState<string>(VOCAB_TOPICS[0]);
   const [selectedMixTopics, setSelectedMixTopics] = useState<string[]>([]);
   const [vocabLevel, setVocabLevel] = useState<string>(DIFFICULTY_LEVELS[1].id);
   const [vocabQuestionCount, setVocabQuestionCount] = useState<number>(10);
+  const [vocabManualInput, setVocabManualInput] = useState<string>("");
 
   // --- TAB 4 STATE: GRAMMAR ---
   const [selectedGrammarTopic, setSelectedGrammarTopic] = useState<string>(GRAMMAR_TOPICS[0]);
@@ -301,7 +302,8 @@ const App = () => {
 
     try {
         const ai = new GoogleGenAI({ apiKey: getApiKey() });
-        const modelId = "gemini-2.5-flash";
+        // Use gemini-3-pro-preview for highest accuracy in reasoning
+        const modelId = "gemini-3-pro-preview";
 
         for (let i = 0; i < totalBatches; i++) {
             setLoadingStatus(`Đang tạo hướng dẫn giải chi tiết (Phần ${i + 1}/${totalBatches})...`);
@@ -578,7 +580,8 @@ QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
     
     try {
       const ai = new GoogleGenAI({ apiKey: getApiKey() });
-      const modelId = "gemini-2.5-flash"; 
+      // Use gemini-3-pro-preview for highest accuracy in reasoning
+      const modelId = "gemini-3-pro-preview"; 
       let contentPart: any = null;
 
       if (file.type === "application/pdf") {
@@ -590,7 +593,7 @@ QUY TRÌNH XỬ LÝ (BẮT BUỘC TUÂN THỦ):
         contentPart = { text: `SOURCE CONTENT:\n${extractedHtml.substring(0, 800000)}` };
       }
 
-      setLoadingStatus("Đang phân tích và viết hướng dẫn giải chi tiết...");
+      setLoadingStatus("Đang phân tích và viết hướng dẫn giải chi tiết (Sử dụng model suy luận cao cấp)...");
 
       const prompt = `
 Bạn là giáo viên Tiếng Anh.
@@ -624,8 +627,8 @@ YÊU CẦU:
       
       const solutionVariant: TestVariant = {
         id: "solution-guide",
-        name: "HƯỚNG DẪN GIẢI CHI TIẾT",
-        htmlContent: `<h2 style="color:#d97706; margin-bottom:20px;">HƯỚNG DẪN GIẢI CHI TIẾT</h2>${solutionHtml}`,
+        name: "HƯỚNG DẪN GIẢI CHI TIẾT (Model AI Cao Cấp)",
+        htmlContent: `<h2 style="color:#d97706; margin-bottom:20px;">HƯỚNG DẪN GIẢI CHI TIẾT (Model AI Cao Cấp)</h2>${solutionHtml}`,
         answerKeyHtml: "" // No separate key table needed for solution guide
       };
 
@@ -762,28 +765,87 @@ Vui lòng soạn thảo bài tập theo yêu cầu chi tiết sau:
     setCreatedContentHtml("");
     setError(null);
 
-    const topics = vocabMode === 'single' ? [selectedVocabTopic] : selectedMixTopics;
-    if (topics.length === 0) {
-      setError("Vui lòng chọn ít nhất một chủ đề.");
-      setIsLoading(false);
-      return;
+    let manualWords: string[] = [];
+    if (vocabMode === 'manual') {
+       manualWords = vocabManualInput.split(/\n|,|;/).map(w => w.trim()).filter(w => w.length > 0);
+       if (manualWords.length === 0) {
+           setError("Vui lòng nhập ít nhất một từ vựng.");
+           setIsLoading(false);
+           return;
+       }
+    } else {
+        const topics = vocabMode === 'single' ? [selectedVocabTopic] : selectedMixTopics;
+        if (topics.length === 0) {
+            setError("Vui lòng chọn ít nhất một chủ đề.");
+            setIsLoading(false);
+            return;
+        }
     }
 
     const levelName = DIFFICULTY_LEVELS.find(l => l.id === vocabLevel)?.name;
-    const totalQuestions = vocabQuestionCount;
-    const batchSize = 10; 
-    const batches = Math.ceil(totalQuestions / batchSize);
     let currentQ = 1;
 
     try {
       const ai = new GoogleGenAI({ apiKey: getApiKey() });
-      const modelId = "gemini-2.5-flash";
+      const modelId = "gemini-2.5-flash"; // Requested to use gemini-2.5-flash for vocabulary generation
 
-      for (let i = 0; i < batches; i++) {
-        const countInBatch = Math.min(batchSize, totalQuestions - (i * batchSize));
-        setLoadingStatus(`Đang tạo bộ câu hỏi ${i + 1}/${batches}...`);
+      if (vocabMode === 'manual') {
+         // --- LOGIC CHO CHẾ ĐỘ TỰ NHẬP (MANUAL) ---
+         const batchSize = 5; // Smaller batch size to ensure 1-to-1 accuracy
+         const totalQuestions = manualWords.length;
+         const batches = Math.ceil(totalQuestions / batchSize);
+         
+         for (let i = 0; i < batches; i++) {
+             const startIdx = i * batchSize;
+             const endIdx = Math.min(startIdx + batchSize, totalQuestions);
+             const batchWords = manualWords.slice(startIdx, endIdx);
+             
+             setLoadingStatus(`Đang tạo câu hỏi cho từ ${startIdx + 1}-${endIdx} (Tổng: ${totalQuestions})...`);
 
-        const prompt = `
+             const prompt = `
+Hãy đóng vai giáo viên Tiếng Anh.
+Nhiệm vụ: Tạo chính xác ${batchWords.length} câu hỏi trắc nghiệm (Multiple Choice) kiểm tra các từ vựng sau: ${batchWords.join(", ")}.
+Mức độ: ${levelName}.
+
+QUY TẮC BẮT BUỘC:
+- **MỖI TỪ VỰNG TRONG DANH SÁCH TRÊN PHẢI CÓ ĐÚNG 1 CÂU HỎI TƯƠNG ỨNG.**
+- Không được bỏ sót từ nào.
+- Từ cần kiểm tra phải là đáp án đúng hoặc là từ khóa chính trong câu hỏi.
+- Bắt đầu đánh số từ: **Question ${currentQ}**.
+- Định dạng HTML chuẩn (KHÔNG dùng Markdown):
+  + Câu hỏi: <b>Question X.</b> [Nội dung câu hỏi]
+  + Đáp án: <div class="ans-opt">A. ...</div> (xuống dòng từng đáp án)
+- **BẮT BUỘC**: Cuối đợt này, tạo Bảng Đáp Án (HTML Table) cho ${batchWords.length} câu hỏi này.
+
+VÍ DỤ OUTPUT:
+<b>Question ${currentQ}.</b> ...
+<div class="ans-opt">A. ...</div>
+...
+<table border="1"><tr><td>${currentQ}. A</td>...</tr></table>
+`;
+             const response = await ai.models.generateContent({
+                 model: modelId,
+                 contents: { parts: [{ text: prompt }] },
+                 config: { temperature: 0.6 }
+             });
+
+             const html = cleanAndFormatHtml(response.text || "");
+             setCreatedContentHtml(prev => prev + `<div class="batch-result mb-8">${html}</div>`);
+             currentQ += batchWords.length;
+         }
+
+      } else {
+          // --- LOGIC CHO CHẾ ĐỘ THEO CHỦ ĐỀ (TOPIC) ---
+          const topics = vocabMode === 'single' ? [selectedVocabTopic] : selectedMixTopics;
+          const totalQuestions = vocabQuestionCount;
+          const batchSize = 10; 
+          const batches = Math.ceil(totalQuestions / batchSize);
+
+          for (let i = 0; i < batches; i++) {
+            const countInBatch = Math.min(batchSize, totalQuestions - (i * batchSize));
+            setLoadingStatus(`Đang tạo bộ câu hỏi ${i + 1}/${batches}...`);
+
+            const prompt = `
 Hãy đóng vai giáo viên Tiếng Anh.
 Nhiệm vụ: Tạo ${countInBatch} câu hỏi trắc nghiệm (Multiple Choice) về từ vựng (Vocabulary) & cụm từ (Collocations).
 Chủ đề: ${topics.join(", ")}.
@@ -803,17 +865,19 @@ VÍ DỤ OUTPUT:
 <br/>
 <table border="1"><tr><td>${currentQ}. A</td>...</tr></table>
 `;
-        
-        const response = await ai.models.generateContent({
-          model: modelId,
-          contents: { parts: [{ text: prompt }] },
-          config: { temperature: 0.8 } 
-        });
+            
+            const response = await ai.models.generateContent({
+              model: modelId,
+              contents: { parts: [{ text: prompt }] },
+              config: { temperature: 0.8 } 
+            });
 
-        const html = cleanAndFormatHtml(response.text || "");
-        setCreatedContentHtml(prev => prev + `<div class="batch-result mb-8">${html}</div>`);
-        currentQ += countInBatch;
+            const html = cleanAndFormatHtml(response.text || "");
+            setCreatedContentHtml(prev => prev + `<div class="batch-result mb-8">${html}</div>`);
+            currentQ += countInBatch;
+          }
       }
+
     } catch (err: any) {
       setError("Lỗi tạo câu hỏi: " + err.message);
     } finally {
@@ -1298,46 +1362,66 @@ Hãy làm thật chi tiết và đẹp mắt.
              <div className="space-y-6 animate-fade-in-up">
                 <div>
                    <label className="text-sm text-blue-200 block mb-2 font-medium">Chế độ chọn:</label>
-                   <div className="flex gap-4">
+                   <div className="flex gap-2">
                       <label className="flex items-center gap-2 cursor-pointer bg-blue-950/50 p-2 rounded-lg border border-blue-800 flex-1 justify-center hover:bg-blue-900 transition">
                          <input type="radio" checked={vocabMode === 'single'} onChange={() => setVocabMode('single')} className="text-blue-600 focus:ring-blue-500" />
-                         <span className="text-white text-sm font-medium">Chủ đề đơn</span>
+                         <span className="text-white text-xs font-medium">Chủ đề đơn</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer bg-blue-950/50 p-2 rounded-lg border border-blue-800 flex-1 justify-center hover:bg-blue-900 transition">
                          <input type="radio" checked={vocabMode === 'mix'} onChange={() => setVocabMode('mix')} className="text-blue-600 focus:ring-blue-500" />
-                         <span className="text-white text-sm font-medium">Trộn chủ đề</span>
+                         <span className="text-white text-xs font-medium">Trộn chủ đề</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer bg-blue-950/50 p-2 rounded-lg border border-blue-800 flex-1 justify-center hover:bg-blue-900 transition">
+                         <input type="radio" checked={vocabMode === 'manual'} onChange={() => setVocabMode('manual')} className="text-blue-600 focus:ring-blue-500" />
+                         <span className="text-white text-xs font-medium">Từ tự nhập</span>
                       </label>
                    </div>
                 </div>
 
-                {vocabMode === 'single' ? (
+                {vocabMode === 'manual' ? (
                    <div>
-                      <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chọn Chủ đề:</label>
-                      <select 
-                         value={selectedVocabTopic} onChange={(e) => setSelectedVocabTopic(e.target.value)}
-                         className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                      >
-                         {VOCAB_TOPICS.map((topic, idx) => <option key={idx} value={topic}>{topic}</option>)}
-                      </select>
+                       <label className="text-sm text-blue-200 block mb-1.5 font-medium">Dán danh sách từ vựng (Xuống dòng hoặc phẩy):</label>
+                       <textarea 
+                          value={vocabManualInput} onChange={(e) => setVocabManualInput(e.target.value)}
+                          placeholder="Example:&#10;environment&#10;pollution&#10;global warming"
+                          className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white placeholder-blue-600 focus:border-blue-500 h-32 custom-scrollbar"
+                       />
+                       <p className="text-xs text-blue-300 mt-1 italic">
+                          Hệ thống sẽ tạo chính xác 1 câu hỏi cho mỗi từ bạn nhập.
+                          <br/>
+                          Đã tìm thấy: <span className="font-bold text-white">{vocabManualInput.split(/\n|,|;/).filter(w => w.trim().length > 0).length}</span> từ.
+                       </p>
                    </div>
                 ) : (
-                   <div>
-                      <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chọn các chủ đề muốn trộn:</label>
-                      <div className="w-full bg-blue-950 border border-blue-700 rounded-lg p-2 max-h-48 overflow-y-auto custom-scrollbar">
-                         {VOCAB_TOPICS.map((topic, idx) => (
-                            <label key={idx} className="flex items-center gap-2 p-1.5 hover:bg-blue-900 rounded cursor-pointer">
-                               <input 
-                                  type="checkbox" 
-                                  checked={selectedMixTopics.includes(topic)}
-                                  onChange={() => handleMixTopicToggle(topic)}
-                                  className="rounded border-blue-500 text-blue-600 bg-blue-900 focus:ring-0"
-                               />
-                               <span className="text-sm text-blue-100">{topic}</span>
-                            </label>
-                         ))}
+                   vocabMode === 'single' ? (
+                      <div>
+                          <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chọn Chủ đề:</label>
+                          <select 
+                            value={selectedVocabTopic} onChange={(e) => setSelectedVocabTopic(e.target.value)}
+                            className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500"
+                          >
+                            {VOCAB_TOPICS.map((topic, idx) => <option key={idx} value={topic}>{topic}</option>)}
+                          </select>
                       </div>
-                      <p className="text-xs text-blue-300 mt-1">Đã chọn: {selectedMixTopics.length} chủ đề</p>
-                   </div>
+                   ) : (
+                      <div>
+                          <label className="text-sm text-blue-200 block mb-1.5 font-medium">Chọn các chủ đề muốn trộn:</label>
+                          <div className="w-full bg-blue-950 border border-blue-700 rounded-lg p-2 max-h-48 overflow-y-auto custom-scrollbar">
+                            {VOCAB_TOPICS.map((topic, idx) => (
+                                <label key={idx} className="flex items-center gap-2 p-1.5 hover:bg-blue-900 rounded cursor-pointer">
+                                  <input 
+                                      type="checkbox" 
+                                      checked={selectedMixTopics.includes(topic)}
+                                      onChange={() => handleMixTopicToggle(topic)}
+                                      className="rounded border-blue-500 text-blue-600 bg-blue-900 focus:ring-0"
+                                  />
+                                  <span className="text-sm text-blue-100">{topic}</span>
+                                </label>
+                            ))}
+                          </div>
+                          <p className="text-xs text-blue-300 mt-1">Đã chọn: {selectedMixTopics.length} chủ đề</p>
+                      </div>
+                   )
                 )}
 
                 <div>
@@ -1350,14 +1434,16 @@ Hãy làm thật chi tiết và đẹp mắt.
                    </select>
                 </div>
 
-                <div>
-                   <label className="text-sm text-blue-200 block mb-1.5 font-medium">Số lượng câu hỏi:</label>
-                   <input 
-                     type="number" min="5" max="100"
-                     value={vocabQuestionCount} onChange={(e) => setVocabQuestionCount(parseInt(e.target.value) || 10)}
-                     className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:border-blue-500"
-                   />
-                </div>
+                {vocabMode !== 'manual' && (
+                  <div>
+                    <label className="text-sm text-blue-200 block mb-1.5 font-medium">Số lượng câu hỏi:</label>
+                    <input 
+                      type="number" min="5" max="100"
+                      value={vocabQuestionCount} onChange={(e) => setVocabQuestionCount(parseInt(e.target.value) || 10)}
+                      className="w-full bg-blue-950 border border-blue-700 rounded-lg px-3 py-2.5 text-white focus:border-blue-500"
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   <button
